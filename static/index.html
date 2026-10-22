@@ -34,6 +34,8 @@
           <a href="#services">Our services</a>
           <a href="#how-it-works">How it works</a>
           <a href="#about">Our approach</a>
+          <a href="#request">Request cleaning</a>
+          <a href="#availability">For cleaners</a>
           <a class="nav-contact" href="#contact">Get in touch <span aria-hidden="true">↗</span></a>
         </nav>
       </div>
@@ -148,7 +150,7 @@
             </div>
           </article>
         </div>
-        <div class="services-foot"><span>Find the right fit for your home</span><a href="#contact" class="arrow-link" aria-label="Contact AdenClean about service options">Talk with us <span aria-hidden="true">↗</span></a></div>
+        <div class="services-foot"><span>Find the right fit for your home</span><a href="#request" class="arrow-link" aria-label="Send a cleaning request">Send a request <span aria-hidden="true">↗</span></a></div>
       </section>
 
       <section class="process" id="how-it-works" aria-labelledby="process-title">
@@ -192,13 +194,156 @@
         </div>
       </section>
 
+      <section class="workflow-section request-section" id="request" aria-labelledby="request-title">
+        <div class="section-shell workflow-grid">
+          <div class="workflow-intro">
+            <p class="eyebrow"><span class="eyebrow-rule"></span> For your household · 01</p>
+            <h2 id="request-title">Tell us what<br>your home <em>needs.</em></h2>
+            <p>Share a few helpful details and AdenClean will receive your cleaning inquiry. This is a request for information, not a confirmed booking.</p>
+            <div class="workflow-note">
+              <span class="note-line" aria-hidden="true"></span>
+              <p>Use a town or postal code only. Please leave out street addresses, entry codes, and payment details.</p>
+            </div>
+          </div>
+
+          <form class="workflow-form" id="service-request-form" novalidate>
+            <div class="form-heading">
+              <span class="form-index">CUSTOMER REQUEST</span>
+              <p>Fields marked <span aria-hidden="true">*</span> are required.</p>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="request-name">Full name <span aria-hidden="true">*</span></label>
+                <input id="request-name" name="fullName" type="text" autocomplete="name" required maxlength="120">
+              </div>
+              <div class="form-field">
+                <label for="request-email">Email address <span aria-hidden="true">*</span></label>
+                <input id="request-email" name="email" type="email" autocomplete="email" required maxlength="254">
+              </div>
+              <div class="form-field">
+                <label for="request-area">Town or postal code <span aria-hidden="true">*</span></label>
+                <input id="request-area" name="area" type="text" autocomplete="postal-code" required maxlength="100" aria-describedby="request-area-help">
+                <span class="field-help" id="request-area-help">Please do not enter a street address.</span>
+              </div>
+              <div class="form-field">
+                <label for="request-service">Cleaning type <span aria-hidden="true">*</span></label>
+                <select id="request-service" name="serviceType" required>
+                  <option value="">Choose a service</option>
+                  <option value="routine">Routine home cleaning</option>
+                  <option value="deep">Deep cleaning</option>
+                  <option value="move-in/move-out">Move-in / move-out</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="request-date">Preferred date <span aria-hidden="true">*</span></label>
+                <input id="request-date" name="preferredDate" type="date" required>
+              </div>
+              <div class="form-field">
+                <label for="request-time">Preferred time <span aria-hidden="true">*</span></label>
+                <select id="request-time" name="preferredTime" required>
+                  <option value="">Choose a time</option>
+                  <option value="morning">Morning</option>
+                  <option value="afternoon">Afternoon</option>
+                  <option value="flexible">Flexible</option>
+                </select>
+              </div>
+              <div class="form-field form-field-wide">
+                <label for="request-notes">Anything else we should know?</label>
+                <textarea id="request-notes" name="notes" rows="4" maxlength="800" aria-describedby="request-notes-help"></textarea>
+                <span class="field-help" id="request-notes-help">Optional, up to 800 characters. Do not include entry codes or payment details.</span>
+              </div>
+            </div>
+            <label class="consent-check" for="request-consent">
+              <input id="request-consent" name="consent" type="checkbox" required>
+              <span>I agree to be contacted about this cleaning inquiry. <span aria-hidden="true">*</span></span>
+            </label>
+            <div class="form-actions">
+              <button class="button button-dark form-submit" type="submit">Send cleaning request <span aria-hidden="true">↗</span></button>
+              <p class="form-disclaimer">Sending this form does not confirm a booking.</p>
+            </div>
+            <div class="form-feedback" id="request-feedback" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="workflow-section availability-section" id="availability" aria-labelledby="availability-title">
+        <div class="section-shell workflow-grid workflow-grid-reverse">
+          <div class="workflow-intro">
+            <p class="eyebrow"><span class="eyebrow-rule"></span> For cleaning professionals · 02</p>
+            <h2 id="availability-title">Make room for<br><em>good work.</em></h2>
+            <p>Let AdenClean know where and when you may be available. This shares your availability; it is not a confirmed job or booking.</p>
+            <div class="workflow-note">
+              <span class="note-line" aria-hidden="true"></span>
+              <p>A town or postal code is enough. Never include a street address, entry code, or payment details.</p>
+            </div>
+          </div>
+
+          <form class="workflow-form" id="cleaner-availability-form" novalidate>
+            <div class="form-heading">
+              <span class="form-index">CLEANER AVAILABILITY</span>
+              <p>Fields marked <span aria-hidden="true">*</span> are required.</p>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="cleaner-name">Full name <span aria-hidden="true">*</span></label>
+                <input id="cleaner-name" name="fullName" type="text" autocomplete="name" required maxlength="120">
+              </div>
+              <div class="form-field">
+                <label for="cleaner-email">Email address <span aria-hidden="true">*</span></label>
+                <input id="cleaner-email" name="email" type="email" autocomplete="email" required maxlength="254">
+              </div>
+              <div class="form-field form-field-wide">
+                <label for="cleaner-area">Town or postal code <span aria-hidden="true">*</span></label>
+                <input id="cleaner-area" name="area" type="text" autocomplete="postal-code" required maxlength="100" aria-describedby="cleaner-area-help">
+                <span class="field-help" id="cleaner-area-help">Please do not enter a street address.</span>
+              </div>
+              <fieldset class="form-field form-field-wide service-choice">
+                <legend>Services you offer <span aria-hidden="true">*</span></legend>
+                <span class="field-help" id="cleaner-services-help">Choose one or more.</span>
+                <div class="choice-row">
+                  <label class="choice-check"><input type="checkbox" name="serviceTypes" value="routine" aria-describedby="cleaner-services-help"><span>Routine</span></label>
+                  <label class="choice-check"><input type="checkbox" name="serviceTypes" value="deep" aria-describedby="cleaner-services-help"><span>Deep clean</span></label>
+                  <label class="choice-check"><input type="checkbox" name="serviceTypes" value="move-in/move-out" aria-describedby="cleaner-services-help"><span>Move-in / move-out</span></label>
+                </div>
+              </fieldset>
+              <div class="form-field">
+                <label for="cleaner-date">Available date <span aria-hidden="true">*</span></label>
+                <input id="cleaner-date" name="availableDate" type="date" required>
+              </div>
+              <div class="form-field form-time-row">
+                <div>
+                  <label for="cleaner-start">Start time <span aria-hidden="true">*</span></label>
+                  <input id="cleaner-start" name="startTime" type="time" required>
+                </div>
+                <div>
+                  <label for="cleaner-end">End time <span aria-hidden="true">*</span></label>
+                  <input id="cleaner-end" name="endTime" type="time" required>
+                </div>
+              </div>
+            </div>
+            <label class="consent-check" for="cleaner-consent">
+              <input id="cleaner-consent" name="consent" type="checkbox" required>
+              <span>I agree to be contacted about this availability submission. <span aria-hidden="true">*</span></span>
+            </label>
+            <div class="form-actions">
+              <button class="button button-dark form-submit" type="submit">Share availability <span aria-hidden="true">↗</span></button>
+              <p class="form-disclaimer">This is not a confirmed job or booking.</p>
+            </div>
+            <div class="form-feedback" id="availability-feedback" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
+          </form>
+        </div>
+      </section>
+
       <section class="contact section-shell" id="contact" aria-labelledby="contact-title">
         <div class="contact-card">
           <div class="contact-copy">
             <p class="eyebrow eyebrow-light"><span class="eyebrow-rule"></span> Questions are welcome</p>
             <h2 id="contact-title">Let’s make<br>home feel <em>lighter.</em></h2>
-            <p>AdenClean’s booking and contact experience is still being built. For now, explore the kinds of cleaning support the platform is designed to help you find.</p>
-            <a class="button button-cream" href="#services">Explore services <span aria-hidden="true">↘</span></a>
+            <p>Start with a cleaning inquiry, or let us know when you may be available to help. Every submission is a first conversation, not a confirmed arrangement.</p>
+            <div class="contact-actions">
+              <a class="button button-cream" href="#request">Request cleaning <span aria-hidden="true">↗</span></a>
+              <a class="light-link" href="#availability">Share your availability <span aria-hidden="true">↘</span></a>
+            </div>
           </div>
           <div class="contact-art" aria-hidden="true">
             <div class="contact-sun"></div>
@@ -230,6 +375,8 @@
           <a href="#services">Services</a>
           <a href="#how-it-works">How it works</a>
           <a href="#about">Our approach</a>
+          <a href="#request">Request cleaning</a>
+          <a href="#availability">Cleaner availability</a>
           <a href="#contact">Contact</a>
         </nav>
       </div>
