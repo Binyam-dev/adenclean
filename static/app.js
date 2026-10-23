@@ -71,3 +71,144 @@ if ("IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-mot
 } else {
   revealTargets.forEach((element) => element.classList.add("is-visible"));
 }
+
+function localDateString(date = new Date()) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+document.querySelectorAll('input[type="date"]').forEach((input) => {
+  input.min = localDateString();
+});
+
+function showFormFeedback(element, type, title, message, reference = "") {
+  if (!element) return;
+
+  element.classList.toggle("is-error", type === "error");
+  element.setAttribute("role", type === "error" ? "alert" : "status");
+  element.replaceChildren();
+
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const detail = document.createElement("p");
+  detail.textContent = reference ? `${message} Reference: ${reference}` : message;
+  element.append(heading, detail);
+  element.focus();
+}
+
+async function submitWorkflowForm(form, endpoint, feedbackId, buildPayload, successTitle) {
+  const feedback = document.getElementById(feedbackId);
+  const submitButton = form.querySelector('button[type="submit"]');
+  const originalButtonMarkup = submitButton.innerHTML;
+
+  form.addEventListener("input", () => {
+    if (feedback.classList.contains("is-error")) {
+      feedback.classList.remove("is-error");
+      feedback.replaceChildren();
+      feedback.setAttribute("role", "status");
+    }
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const endTime = form.elements.namedItem("endTime");
+    if (endTime) {
+      const startTime = form.elements.namedItem("startTime");
+      endTime.setCustomValidity(
+        startTime.value && endTime.value && endTime.value <= startTime.value
+          ? "End time must be later than start time."
+          : ""
+      );
+    }
+
+    if (!form.reportValidity()) return;
+
+    const serviceCheckboxes = form.querySelectorAll('input[name="serviceTypes"]');
+    if (serviceCheckboxes.length && !form.querySelector('input[name="serviceTypes"]:checked')) {
+      showFormFeedback(
+        feedback,
+        "error",
+        "Choose a service",
+        "Select at least one service you offer."
+      );
+      serviceCheckboxes[0].focus();
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent = "Saving…";
+    form.setAttribute("aria-busy", "true");
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload(new FormData(form))),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "The submission could not be saved.");
+      }
+
+      form.reset();
+      showFormFeedback(
+        feedback,
+        "success",
+        successTitle,
+        `${result.message} Email updates are not connected in this preview.`,
+        result.reference
+      );
+    } catch (error) {
+      showFormFeedback(
+        feedback,
+        "error",
+        "Submission not saved",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML = originalButtonMarkup;
+      form.removeAttribute("aria-busy");
+    }
+  });
+}
+
+const serviceRequestForm = document.querySelector("#service-request-form");
+if (serviceRequestForm) {
+  submitWorkflowForm(
+    serviceRequestForm,
+    "/api/service-requests",
+    "request-feedback",
+    (formData) => ({
+      fullName: formData.get("fullName"),
+      email: formData.get("email"),
+      area: formData.get("area"),
+      serviceType: formData.get("serviceType"),
+      preferredDate: formData.get("preferredDate"),
+      preferredTime: formData.get("preferredTime"),
+      notes: formData.get("notes") || "",
+      consent: formData.get("consent") === "on",
+    }),
+    "Inquiry saved"
+  );
+}
+
+const cleanerAvailabilityForm = document.querySelector("#cleaner-availability-form");
+if (cleanerAvailabilityForm) {
+  submitWorkflowForm(
+    cleanerAvailabilityForm,
+    "/api/cleaner-availability",
+    "availability-feedback",
+    (formData) => ({
+      fullName: formData.get("fullName"),
+      email: formData.get("email"),
+      area: formData.get("area"),
+      serviceTypes: formData.getAll("serviceTypes"),
+      availableDate: formData.get("availableDate"),
+      startTime: formData.get("startTime"),
+      endTime: formData.get("endTime"),
+      consent: formData.get("consent") === "on",
+    }),
+    "Availability saved"
+  );
+}

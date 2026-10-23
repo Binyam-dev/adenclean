@@ -4,6 +4,7 @@ import re
 import sqlite3
 import time
 import uuid
+from contextlib import closing
 from datetime import date, datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -49,7 +50,7 @@ def initialize_database():
     else:
         os.close(descriptor)
 
-    with sqlite3.connect(DATABASE_PATH) as connection:
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection, connection:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(
             """
@@ -131,10 +132,10 @@ def clean_date(value, label):
 def clean_time(value, label):
     time_value = clean_text(value, label, 5)
     try:
-        datetime.strptime(time_value, "%H:%M")
+        parsed_time = datetime.strptime(time_value, "%H:%M")
     except ValueError as error:
         raise ApiError(400, f"Choose a valid {label.lower()}.") from error
-    return time_value
+    return parsed_time.strftime("%H:%M")
 
 
 def clean_consent(value):
@@ -258,7 +259,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         consent = clean_consent(payload.get("consent"))
         reference = uuid.uuid4().hex[:12].upper()
 
-        with sqlite3.connect(DATABASE_PATH, timeout=10) as connection:
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO customer_requests (
@@ -297,7 +298,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         consent = clean_consent(payload.get("consent"))
         reference = uuid.uuid4().hex[:12].upper()
 
-        with sqlite3.connect(DATABASE_PATH, timeout=10) as connection:
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO cleaner_availability (

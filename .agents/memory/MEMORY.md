@@ -1,0 +1,1 @@
+- [Preview submission storage](preview-submission-storage.md) — Local SQLite intake is preview-only; settle durable storage, access control, and retention before beta.
