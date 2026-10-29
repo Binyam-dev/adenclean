@@ -457,17 +457,20 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         return reference
 
     def admin_secret_is_configured(self):
-        admin_password = os.environ.get("ADENCLEAN_ADMIN_PASSWORD", "")
-        return bool(
-            len(admin_password) >= ADMIN_PASSWORD_MIN_LENGTH
-            and os.environ.get("SESSION_SECRET")
-        )
+        return not self.admin_setup_message()
 
     def admin_setup_message(self):
-        return (
-            "Set ADENCLEAN_ADMIN_PASSWORD to a unique password with at least "
-            f"{ADMIN_PASSWORD_MIN_LENGTH} characters."
-        )
+        admin_password = os.environ.get("ADENCLEAN_ADMIN_PASSWORD", "")
+        if not admin_password:
+            return "ADENCLEAN_ADMIN_PASSWORD is not available to the app. Save it in Replit Secrets and restart."
+        if len(admin_password) < ADMIN_PASSWORD_MIN_LENGTH:
+            return (
+                "ADENCLEAN_ADMIN_PASSWORD must be at least "
+                f"{ADMIN_PASSWORD_MIN_LENGTH} characters. Replace it in Replit Secrets."
+            )
+        if not os.environ.get("SESSION_SECRET"):
+            return "SESSION_SECRET is not available to the app. Check Replit Secrets and restart."
+        return ""
 
     def make_admin_session(self):
         expires_at = int(time.time()) + ADMIN_SESSION_SECONDS
