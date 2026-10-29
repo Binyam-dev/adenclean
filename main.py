@@ -23,6 +23,7 @@ RATE_LIMIT_WINDOW_SECONDS = 15 * 60
 RATE_LIMIT_MAX_REQUESTS = 10
 ADMIN_SESSION_COOKIE = "adenclean_admin_session"
 ADMIN_SESSION_SECONDS = 8 * 60 * 60
+ADMIN_PASSWORD_MIN_LENGTH = 16
 RATE_LIMITS = {}
 SERVICE_TYPES = {
     "routine": "Routine home cleaning",
@@ -456,9 +457,16 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         return reference
 
     def admin_secret_is_configured(self):
+        admin_password = os.environ.get("ADENCLEAN_ADMIN_PASSWORD", "")
         return bool(
-            os.environ.get("ADENCLEAN_ADMIN_PASSWORD")
+            len(admin_password) >= ADMIN_PASSWORD_MIN_LENGTH
             and os.environ.get("SESSION_SECRET")
+        )
+
+    def admin_setup_message(self):
+        return (
+            "Set ADENCLEAN_ADMIN_PASSWORD to a unique password with at least "
+            f"{ADMIN_PASSWORD_MIN_LENGTH} characters."
         )
 
     def make_admin_session(self):
@@ -502,7 +510,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         if not self.admin_secret_is_configured():
             self.send_json(
                 503,
-                {"ok": False, "error": "Admin access is not configured for this preview."},
+                {"ok": False, "error": self.admin_setup_message()},
             )
             return False
         if not self.admin_session_is_valid():
@@ -514,7 +522,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         if not self.admin_secret_is_configured():
             self.send_json(
                 503,
-                {"ok": False, "error": "Admin access is not configured for this preview."},
+                {"ok": False, "error": self.admin_setup_message()},
             )
             return
 
@@ -552,7 +560,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         if not self.admin_secret_is_configured():
             self.send_json(
                 503,
-                {"ok": False, "error": "Admin access is not configured for this preview."},
+                {"ok": False, "error": self.admin_setup_message()},
             )
             return
 
