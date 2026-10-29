@@ -291,7 +291,10 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
                     {"ok": True, "configured": True, "authenticated": True},
                 )
             else:
-                self.send_json(401, {"ok": False, "error": "Sign in to continue."})
+                self.send_json(
+                    200,
+                    {"ok": True, "configured": True, "authenticated": False},
+                )
             return
 
         if path == "/api/admin/records":

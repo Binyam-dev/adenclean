@@ -42,13 +42,13 @@ async function parseResponse(response) {
 async function checkSession() {
   try {
     const response = await fetch("/api/admin/session", { cache: "no-store" });
-    if (response.status === 401) {
-      showLogin("Sign in with the private admin password.", true);
-      return;
-    }
     const result = await parseResponse(response);
     if (result.configured === false) {
       showLogin(result.message || "Admin access is not configured for this preview.");
+      return;
+    }
+    if (result.authenticated === false) {
+      showLogin("Sign in with the private admin password.", true);
       return;
     }
     showDashboard();
