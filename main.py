@@ -282,7 +282,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
                         "ok": True,
                         "configured": False,
                         "authenticated": False,
-                        "message": "Admin access is not configured for this preview.",
+                        "message": self.admin_setup_message(),
                     },
                 )
             elif self.admin_session_is_valid():
