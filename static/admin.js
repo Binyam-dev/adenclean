@@ -110,9 +110,12 @@ tabs.forEach((tab) => {
 });
 
 function configureStatusOptions() {
-  const statuses = recordType === "requests"
-    ? ["all", "pending", "approved", "declined", "completed", "cancelled"]
-    : ["all", "pending", "approved", "declined"];
+  const statusesByType = {
+    requests: ["all", "pending", "approved", "declined", "completed", "cancelled"],
+    availability: ["all", "pending", "approved", "declined"],
+    reviews: ["all", "new", "reviewed"],
+    issues: ["all", "open", "in_review", "resolved"],
+  };
   const labels = {
     all: "All statuses",
     pending: "Pending",
@@ -120,7 +123,13 @@ function configureStatusOptions() {
     declined: "Declined",
     completed: "Completed",
     cancelled: "Cancelled",
+    new: "New",
+    reviewed: "Reviewed",
+    open: "Open",
+    in_review: "In review",
+    resolved: "Resolved",
   };
+  const statuses = statusesByType[recordType] || statusesByType.requests;
   const previousValue = statusFilter.value;
   statusFilter.replaceChildren();
   statuses.forEach((value) => {
@@ -157,9 +166,13 @@ async function loadRecords() {
 
 function renderSummary(counts) {
   summary.replaceChildren();
-  const labels = recordType === "requests"
-    ? [["pending", "Pending"], ["approved", "Approved"], ["declined", "Declined"], ["completed", "Completed"]]
-    : [["pending", "Pending"], ["approved", "Approved"], ["declined", "Declined"]];
+  const labelsByType = {
+    requests: [["pending", "Pending"], ["approved", "Approved"], ["declined", "Declined"], ["completed", "Completed"]],
+    availability: [["pending", "Pending"], ["approved", "Approved"], ["declined", "Declined"]],
+    reviews: [["new", "New"], ["reviewed", "Reviewed"]],
+    issues: [["open", "Open"], ["in_review", "In review"], ["resolved", "Resolved"]],
+  };
+  const labels = labelsByType[recordType] || labelsByType.requests;
   labels.forEach(([status, label]) => {
     const item = document.createElement("div");
     item.className = "admin-summary-item";
@@ -198,7 +211,7 @@ function friendlyTimestamp(value) {
 }
 
 function readableStatus(value) {
-  return value.slice(0, 1).toUpperCase() + value.slice(1);
+  return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function actionOptions(record) {
@@ -209,15 +222,22 @@ function actionOptions(record) {
     if (record.status === "declined") return [["pending", "Reopen"]];
     return [];
   }
+  if (recordType === "reviews") {
+    return record.status === "new" ? [["reviewed", "Mark reviewed"]] : [];
+  }
+  if (recordType === "issues") {
+    if (record.status === "open") return [["in_review", "Start review"], ["resolved", "Resolve issue"]];
+    if (record.status === "in_review") return [["open", "Return to open"], ["resolved", "Resolve issue"]];
+    if (record.status === "resolved") return [["in_review", "Reopen issue"]];
+    return [];
+  }
   if (record.status === "pending") {
     return [["approved", "Approve for follow-up"], ["declined", "Decline"], ["cancelled", "Cancel"]];
   }
   if (record.status === "approved") {
     return [["completed", "Mark complete"], ["cancelled", "Cancel"], ["pending", "Return to pending"]];
   }
-  if (record.status === "declined" || record.status === "cancelled") {
-    return [["pending", "Reopen"]];
-  }
+  if (record.status === "declined" || record.status === "cancelled") return [["pending", "Reopen"]];
   return [];
 }
 
@@ -271,7 +291,9 @@ function renderRecords(records) {
     name.textContent = record.full_name;
     const reference = document.createElement("p");
     reference.className = "admin-reference";
-    reference.textContent = `Reference ${record.id} · Submitted ${friendlyTimestamp(record.created_at)}`;
+    reference.textContent = record.request_id
+      ? `Feedback ${record.id} · Request ${record.request_id} · Submitted ${friendlyTimestamp(record.created_at)}`
+      : `Reference ${record.id} · Submitted ${friendlyTimestamp(record.created_at)}`;
     heading.append(name, reference);
     const badge = document.createElement("span");
     badge.className = `admin-status status-${record.status}`;
@@ -293,7 +315,7 @@ function renderRecords(records) {
       addDetail(details, "Preferred date", friendlyDate(record.preferred_date));
       addDetail(details, "Preferred time", record.preferred_time);
       if (record.notes) addDetail(details, "Customer note", record.notes);
-    } else {
+    } else if (recordType === "availability") {
       let cleanerServices = record.service_types;
       try {
         cleanerServices = JSON.parse(record.service_types)
@@ -309,6 +331,16 @@ function renderRecords(records) {
       addDetail(details, "Services offered", cleanerServices);
       addDetail(details, "Available date", friendlyDate(record.available_date));
       addDetail(details, "Time window", `${record.start_time}–${record.end_time}`);
+    } else {
+      const serviceLabels = {
+        routine: "Routine home cleaning",
+        deep: "Deep cleaning",
+        "move-in/move-out": "Move-in / move-out",
+      };
+      addDetail(details, "Service", serviceLabels[record.service_type] || record.service_type);
+      addDetail(details, "Service date", friendlyDate(record.preferred_date));
+      if (recordType === "reviews") addDetail(details, "Rating", `${record.rating} / 5`);
+      addDetail(details, recordType === "reviews" ? "Customer review" : "Reported issue", record.message);
     }
     card.append(details);
 

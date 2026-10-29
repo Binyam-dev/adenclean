@@ -2,6 +2,7 @@ import json
 import hmac
 import os
 import re
+import secrets
 import sqlite3
 import time
 import uuid
@@ -33,10 +34,17 @@ SERVICE_TYPES = {
     "move-in-out": "Move-in / move-out",
 }
 PREFERRED_TIMES = {"morning", "afternoon", "flexible"}
-RECORD_TYPES = {"requests": "customer_requests", "availability": "cleaner_availability"}
+RECORD_TYPES = {
+    "requests": "customer_requests",
+    "availability": "cleaner_availability",
+    "reviews": "customer_reviews",
+    "issues": "service_issues",
+}
 RECORD_STATUSES = {
     "requests": {"pending", "approved", "declined", "completed", "cancelled"},
     "availability": {"pending", "approved", "declined"},
+    "reviews": {"new", "reviewed"},
+    "issues": {"open", "in_review", "resolved"},
 }
 STATUS_TRANSITIONS = {
     "requests": {
@@ -50,6 +58,15 @@ STATUS_TRANSITIONS = {
         "pending": {"approved", "declined"},
         "approved": set(),
         "declined": {"pending"},
+    },
+    "reviews": {
+        "new": {"reviewed"},
+        "reviewed": set(),
+    },
+    "issues": {
+        "open": {"in_review", "resolved"},
+        "in_review": {"open", "resolved"},
+        "resolved": {"in_review"},
     },
 }
 
@@ -91,7 +108,8 @@ def initialize_database():
                 notes TEXT NOT NULL,
                 consent INTEGER NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
-                status_updated_at TEXT NOT NULL DEFAULT ''
+                status_updated_at TEXT NOT NULL DEFAULT '',
+                feedback_token_hash TEXT
             );
 
             CREATE TABLE IF NOT EXISTS cleaner_availability (
@@ -119,6 +137,27 @@ def initialize_database():
                 actor TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS customer_reviews (
+                id TEXT PRIMARY KEY,
+                request_id TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+                message TEXT NOT NULL,
+                consent INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'new',
+                status_updated_at TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS service_issues (
+                id TEXT PRIMARY KEY,
+                request_id TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                message TEXT NOT NULL,
+                consent INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                status_updated_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
 
@@ -141,6 +180,21 @@ def initialize_database():
                 WHERE status_updated_at = ''
                 """
             )
+
+        request_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(customer_requests)")
+        }
+        if "feedback_token_hash" not in request_columns:
+            connection.execute(
+                "ALTER TABLE customer_requests ADD COLUMN feedback_token_hash TEXT"
+            )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_requests_feedback_token
+            ON customer_requests(feedback_token_hash)
+            WHERE feedback_token_hash IS NOT NULL
+            """
+        )
 
 
 def clean_text(value, label, max_length, required=True, allow_newlines=False):
@@ -315,6 +369,21 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if path == "/api/customer-feedback":
+            try:
+                self.enforce_rate_limit()
+                payload = self.read_json()
+                status, result = self.handle_customer_feedback(payload)
+                self.send_json(status, result)
+            except ApiError as error:
+                self.send_json(error.status, {"ok": False, "error": error.message})
+            except sqlite3.Error:
+                self.send_json(
+                    500,
+                    {"ok": False, "error": "The feedback could not be saved. Please try again."},
+                )
+            return
+
         if path in {"/api/admin/session", "/api/admin/logout", "/api/admin/records"}:
             try:
                 if path == "/api/admin/session":
@@ -344,15 +413,15 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             self.enforce_rate_limit()
             payload = self.read_json()
             if path == "/api/service-requests":
-                reference = self.save_service_request(payload)
+                reference, feedback_token = self.save_service_request(payload)
                 message = "Your inquiry is saved and pending review. This is not a confirmed booking."
             else:
                 reference = self.save_cleaner_availability(payload)
                 message = "Your availability is saved and pending review. This is not a confirmed shift."
-            self.send_json(
-                201,
-                {"ok": True, "reference": reference, "message": message},
-            )
+            result = {"ok": True, "reference": reference, "message": message}
+            if path == "/api/service-requests":
+                result["feedbackToken"] = feedback_token
+            self.send_json(201, result)
         except ApiError as error:
             self.send_json(error.status, {"ok": False, "error": error.message})
         except sqlite3.Error:
@@ -376,6 +445,8 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         )
         consent = clean_consent(payload.get("consent"))
         reference = uuid.uuid4().hex[:12].upper()
+        feedback_token = secrets.token_urlsafe(32)
+        feedback_token_hash = hashlib.sha256(feedback_token.encode("utf-8")).hexdigest()
 
         with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection, connection:
             created_at = datetime.now(timezone.utc).isoformat()
@@ -383,8 +454,9 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
                 """
                 INSERT INTO customer_requests (
                     id, created_at, full_name, email, area, service_type,
-                    preferred_date, preferred_time, notes, consent, status, status_updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                    preferred_date, preferred_time, notes, consent, status, status_updated_at,
+                    feedback_token_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
                 """,
                 (
                     reference,
@@ -398,6 +470,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
                     notes,
                     consent,
                     created_at,
+                    feedback_token_hash,
                 ),
             )
             connection.execute(
@@ -408,7 +481,145 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
                 """,
                 (reference, created_at),
             )
-        return reference
+        return reference, feedback_token
+
+    def handle_customer_feedback(self, payload):
+        action = clean_text(payload.get("action"), "Feedback action", 20).lower()
+        if action not in {"lookup", "review", "issue"}:
+            raise ApiError(400, "Choose a valid feedback action.")
+
+        token = payload.get("token")
+        if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
+            raise ApiError(404, "That private feedback link is invalid.")
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection, connection:
+            connection.row_factory = sqlite3.Row
+            request = connection.execute(
+                """
+                SELECT id, status, service_type, preferred_date
+                FROM customer_requests
+                WHERE feedback_token_hash = ?
+                """,
+                (token_hash,),
+            ).fetchone()
+            if request is None:
+                raise ApiError(404, "That private feedback link is invalid.")
+
+            review_exists = connection.execute(
+                "SELECT 1 FROM customer_reviews WHERE request_id = ?",
+                (request["id"],),
+            ).fetchone() is not None
+            issue = connection.execute(
+                "SELECT status FROM service_issues WHERE request_id = ?",
+                (request["id"],),
+            ).fetchone()
+            issue_exists = issue is not None
+
+            if action == "lookup":
+                return 200, {
+                    "ok": True,
+                    "ready": request["status"] == "completed",
+                    "status": request["status"],
+                    "serviceType": request["service_type"],
+                    "preferredDate": request["preferred_date"],
+                    "reviewSubmitted": review_exists,
+                    "issueSubmitted": issue_exists,
+                    "issueStatus": issue["status"] if issue else None,
+                }
+
+            if request["status"] != "completed":
+                raise ApiError(
+                    409,
+                    "Feedback is available after AdenClean marks the service complete.",
+                )
+
+            consent = clean_consent(payload.get("consent"))
+            message = clean_text(
+                payload.get("message"),
+                "Feedback",
+                1200,
+                allow_newlines=True,
+            )
+            if len(message) < 10:
+                raise ApiError(400, "Feedback must be at least 10 characters.")
+
+            created_at = datetime.now(timezone.utc).isoformat()
+            record_id = uuid.uuid4().hex[:12].upper()
+            if action == "review":
+                if review_exists:
+                    raise ApiError(409, "A review has already been submitted for this service.")
+                rating = payload.get("rating")
+                if isinstance(rating, bool) or not isinstance(rating, int) or rating not in range(1, 6):
+                    raise ApiError(400, "Choose a rating from 1 to 5.")
+                table_name = "customer_reviews"
+                record_status = "new"
+                try:
+                    connection.execute(
+                        """
+                        INSERT INTO customer_reviews (
+                            id, request_id, created_at, rating, message, consent,
+                            status, status_updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, 'new', ?)
+                        """,
+                        (
+                            record_id,
+                            request["id"],
+                            created_at,
+                            rating,
+                            message,
+                            consent,
+                            created_at,
+                        ),
+                    )
+                except sqlite3.IntegrityError as error:
+                    raise ApiError(409, "A review has already been submitted for this service.") from error
+                history_note = "Customer review received."
+                response_message = "Your review was saved for AdenClean to read."
+            else:
+                if issue_exists:
+                    raise ApiError(409, "A service issue has already been reported for this request.")
+                table_name = "service_issues"
+                record_status = "open"
+                try:
+                    connection.execute(
+                        """
+                        INSERT INTO service_issues (
+                            id, request_id, created_at, message, consent,
+                            status, status_updated_at
+                        ) VALUES (?, ?, ?, ?, ?, 'open', ?)
+                        """,
+                        (
+                            record_id,
+                            request["id"],
+                            created_at,
+                            message,
+                            consent,
+                            created_at,
+                        ),
+                    )
+                except sqlite3.IntegrityError as error:
+                    raise ApiError(409, "A service issue has already been reported for this request.") from error
+                history_note = "Customer service issue reported."
+                response_message = "Your service issue was sent to AdenClean for review."
+
+            connection.execute(
+                """
+                INSERT INTO status_history (
+                    record_type, record_id, old_status, new_status, note, actor, created_at
+                ) VALUES (?, ?, NULL, ?, ?, 'customer', ?)
+                """,
+                (("reviews" if action == "review" else "issues"), record_id, record_status, history_note, created_at),
+            )
+
+        return 201, {
+            "ok": True,
+            "kind": action,
+            "reference": record_id,
+            "message": response_message,
+            "reviewSubmitted": review_exists or action == "review",
+            "issueSubmitted": issue_exists or action == "issue",
+        }
 
     def save_cleaner_availability(self, payload):
         full_name = clean_text(payload.get("fullName"), "Name", 100)
@@ -584,19 +795,47 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             return
 
         table_name = RECORD_TYPES[record_type]
-        selected_columns = (
-            "id, created_at, full_name, email, area, service_type, preferred_date, "
-            "preferred_time, notes, status, status_updated_at"
-            if record_type == "requests"
-            else "id, created_at, full_name, email, area, service_types, available_date, "
-            "start_time, end_time, status, status_updated_at"
-        )
-        query_sql = f"SELECT {selected_columns} FROM {table_name}"
+        if record_type == "requests":
+            query_sql = """
+                SELECT id, created_at, full_name, email, area, service_type, preferred_date,
+                       preferred_time, notes, status, status_updated_at
+                FROM customer_requests
+            """
+            status_column = "status"
+            order_column = "created_at"
+        elif record_type == "availability":
+            query_sql = """
+                SELECT id, created_at, full_name, email, area, service_types, available_date,
+                       start_time, end_time, status, status_updated_at
+                FROM cleaner_availability
+            """
+            status_column = "status"
+            order_column = "created_at"
+        elif record_type == "reviews":
+            query_sql = """
+                SELECT r.id, r.request_id, r.created_at, r.rating, r.message, r.status,
+                       r.status_updated_at, c.full_name, c.email, c.area, c.service_type,
+                       c.preferred_date
+                FROM customer_reviews AS r
+                JOIN customer_requests AS c ON c.id = r.request_id
+            """
+            status_column = "r.status"
+            order_column = "r.created_at"
+        else:
+            query_sql = """
+                SELECT i.id, i.request_id, i.created_at, i.message, i.status,
+                       i.status_updated_at, c.full_name, c.email, c.area, c.service_type,
+                       c.preferred_date
+                FROM service_issues AS i
+                JOIN customer_requests AS c ON c.id = i.request_id
+            """
+            status_column = "i.status"
+            order_column = "i.created_at"
         query_values = []
         if status_filter != "all":
-            query_sql += " WHERE status = ?"
+            query_sql += f" WHERE {status_column} = ?"
             query_values.append(status_filter)
-        query_sql += " ORDER BY created_at DESC LIMIT 100"
+        query_sql += f" ORDER BY {order_column} DESC LIMIT 100"
 
         with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection:
             connection.row_factory = sqlite3.Row

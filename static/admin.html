@@ -32,7 +32,7 @@
       <section class="admin-login" id="admin-login" aria-labelledby="admin-title">
         <p class="eyebrow"><span class="eyebrow-rule"></span> Private preview</p>
         <h1 id="admin-title">Review <em>submissions.</em></h1>
-        <p class="admin-lede">Sign in to review customer inquiries and cleaner availability. Approval means ready for follow-up; it does not confirm a booking or shift.</p>
+        <p class="admin-lede">Sign in to review customer requests, cleaner availability, service reviews, and reported issues.</p>
         <div class="admin-notice" id="admin-notice" role="status" aria-live="polite"></div>
         <form class="workflow-form admin-login-form" id="admin-login-form" hidden>
           <input type="text" name="username" autocomplete="username" value="admin" hidden>
@@ -51,7 +51,7 @@
           <div>
             <p class="eyebrow"><span class="eyebrow-rule"></span> Private preview</p>
             <h1 id="dashboard-title">Submission <em>review.</em></h1>
-            <p class="admin-lede">Approvals are internal review decisions. They do not confirm bookings, assign cleaners, or notify customers.</p>
+            <p class="admin-lede">Approvals are internal follow-up decisions. They do not confirm bookings, assign cleaners, or notify customers.</p>
           </div>
           <button class="admin-quiet-button" id="admin-logout" type="button">Sign out</button>
         </div>
@@ -60,6 +60,8 @@
           <div class="admin-tabs" role="group" aria-label="Submission type">
             <button class="admin-tab is-active" type="button" data-record-type="requests" aria-pressed="true">Customer requests</button>
             <button class="admin-tab" type="button" data-record-type="availability" aria-pressed="false">Cleaner availability</button>
+            <button class="admin-tab" type="button" data-record-type="reviews" aria-pressed="false">Reviews</button>
+            <button class="admin-tab" type="button" data-record-type="issues" aria-pressed="false">Service issues</button>
           </div>
           <label class="admin-filter-label" for="admin-status-filter">Show
             <select id="admin-status-filter">

@@ -928,3 +928,30 @@ h1, h2, h3, p { margin-top: 0; }
   .admin-record-header { flex-direction: column-reverse; }
   .admin-header-inner { min-height: 68px; }
 }
+
+/* Customer feedback */
+.feedback-page [hidden] { display: none !important; }
+.feedback-main { max-width: 920px; }
+.feedback-panel { max-width: 700px; margin: 0 auto; }
+.feedback-panel h1 { margin: 0; font-family: var(--font-display); font-size: clamp(43px, 6vw, 68px); line-height: 1.04; letter-spacing: -.075em; font-weight: 600; }
+.feedback-panel h1 em { color: var(--clay); font-style: normal; }
+.feedback-state { margin-top: 28px; padding: 22px; border: 1px solid var(--line); background: #f7f5ec; }
+.feedback-state h2 { margin: 0 0 8px; color: var(--forest); font-family: var(--font-display); font-size: 22px; }
+.feedback-state p, .feedback-loading { color: #647368; font-size: 12px; line-height: 1.7; }
+.feedback-service { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; margin: 24px 0 16px; padding: 14px 16px; border: 1px solid var(--line); color: #647368; background: #f7f5ec; font-size: 11px; }
+.feedback-service strong { color: var(--forest); }
+.feedback-form { display: grid; gap: 18px; margin: 16px 0; }
+.feedback-form .form-field { display: grid; gap: 7px; }
+.feedback-form .form-field label { color: var(--ink); font-size: 11px; font-weight: 700; }
+.feedback-form select, .feedback-form textarea { width: 100%; min-height: 44px; padding: 11px 12px; border: 1px solid rgba(28,59,50,.23); border-radius: 0; color: var(--ink); background: #fbfaf4; font: inherit; font-size: 12px; }
+.feedback-form textarea { min-height: 130px; resize: vertical; line-height: 1.6; }
+.feedback-form select:focus-visible, .feedback-form textarea:focus-visible { outline: 3px solid var(--clay); outline-offset: 2px; }
+.feedback-form .field-help { color: #647368; font-size: 10px; line-height: 1.5; }
+.feedback-form .consent-check { align-items: flex-start; }
+.feedback-submitted { margin: 16px 0; padding: 15px 17px; border-left: 3px solid var(--forest); color: var(--forest); background: #e4e9dc; font-size: 12px; line-height: 1.7; }
+.feedback-private-link { display: inline-block; margin-top: 8px; color: var(--forest); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.feedback-private-link:focus-visible { outline: 3px solid var(--clay); outline-offset: 3px; }
+@media (max-width: 600px) {
+  .feedback-main { padding-top: 50px; }
+  .feedback-service { align-items: flex-start; flex-direction: column; }
+}

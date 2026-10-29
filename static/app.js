@@ -158,6 +158,16 @@ async function submitWorkflowForm(form, endpoint, feedbackId, buildPayload, succ
         `${result.message} Email updates are not connected in this preview.`,
         result.reference
       );
+      if (endpoint === "/api/service-requests" && result.feedbackToken) {
+        const detail = feedback.querySelector("p");
+        const link = document.createElement("a");
+        link.className = "feedback-private-link";
+        link.href = `/feedback.html#token=${encodeURIComponent(result.feedbackToken)}`;
+        link.textContent = "Open your private feedback link";
+        const guidance = document.createElement("span");
+        guidance.textContent = " Bookmark this link for after the service; anyone with it can submit feedback.";
+        detail.append(document.createElement("br"), link, guidance);
+      }
     } catch (error) {
       showFormFeedback(
         feedback,

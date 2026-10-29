@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#f3f1e8">
+    <title>Service feedback — AdenClean</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/feedback.js" defer></script>
+  </head>
+  <body class="admin-page feedback-page">
+    <a class="skip-link" href="#feedback-main">Skip to feedback</a>
+    <header class="admin-header">
+      <div class="section-shell admin-header-inner">
+        <a class="brand" href="/" aria-label="AdenClean home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 40 40" fill="none">
+              <path d="M8 28.5V18.2L20 8l12 10.2v10.3a3.5 3.5 0 0 1-3.5 3.5h-17A3.5 3.5 0 0 1 8 28.5Z" stroke="currentColor" stroke-width="2.3" stroke-linejoin="round"/>
+              <path d="M15.5 31.5v-9h9v9M27.2 8.6l4.7-3.9M6.6 12.8l-2.7-2.3M20 3.5v-2" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+              <path d="M32.5 13.3h4M34.5 11.3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="brand-name">aden<span>clean</span></span>
+        </a>
+        <a class="admin-back-link" href="/">Back to site <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
+
+    <main class="section-shell admin-main feedback-main" id="feedback-main">
+      <section class="feedback-panel" aria-labelledby="feedback-title">
+        <p class="eyebrow"><span class="eyebrow-rule"></span> Private preview</p>
+        <h1 id="feedback-title">Your service,<br><em>your feedback.</em></h1>
+        <p class="admin-lede">Use the private link from your request confirmation to leave one review and, if needed, report one service issue. Feedback is reviewed by AdenClean and is not posted publicly.</p>
+
+        <div class="admin-notice" id="feedback-notice" role="status" aria-live="polite"></div>
+        <p class="feedback-loading" id="feedback-loading">Checking your private link…</p>
+        <section class="feedback-state" id="feedback-missing" hidden>
+          <h2>This link is unavailable.</h2>
+          <p>Open the private feedback link shown after you send a cleaning request. If you no longer have it, contact AdenClean directly.</p>
+        </section>
+        <section class="feedback-state" id="feedback-waiting" hidden>
+          <h2>Feedback opens after service.</h2>
+          <p id="feedback-waiting-message">Your private link will work after AdenClean marks the service complete. A request or approval is not a confirmed booking.</p>
+        </section>
+
+        <section class="feedback-content" id="feedback-content" hidden>
+          <div class="feedback-service" id="feedback-service"></div>
+          <form class="workflow-form feedback-form" id="review-form" hidden>
+            <div class="form-heading">
+              <span class="form-index">YOUR REVIEW</span>
+              <p>One review per completed service.</p>
+            </div>
+            <div class="form-field">
+              <label for="review-rating">How would you rate the service? <span aria-hidden="true">*</span></label>
+              <select id="review-rating" name="rating" required>
+                <option value="">Choose a rating</option>
+                <option value="5">5 — Excellent</option>
+                <option value="4">4 — Good</option>
+                <option value="3">3 — Okay</option>
+                <option value="2">2 — Could be better</option>
+                <option value="1">1 — Not satisfied</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="review-message">Tell us about your experience <span aria-hidden="true">*</span></label>
+              <textarea id="review-message" name="message" rows="5" minlength="10" maxlength="1200" required></textarea>
+              <span class="field-help">10–1,200 characters. Do not include payment details or entry codes.</span>
+            </div>
+            <label class="consent-check" for="review-consent">
+              <input id="review-consent" name="consent" type="checkbox" required>
+              <span>I agree that this private preview will store my review for AdenClean to read. It will not be posted publicly. <span aria-hidden="true">*</span></span>
+            </label>
+            <div class="form-actions">
+              <button class="button button-dark form-submit" type="submit">Send review <span aria-hidden="true">↗</span></button>
+            </div>
+          </form>
+          <p class="feedback-submitted" id="review-submitted" hidden>Your review has been received. Thank you for sharing your experience.</p>
+
+          <form class="workflow-form feedback-form" id="issue-form" hidden>
+            <div class="form-heading">
+              <span class="form-index">REPORT A SERVICE ISSUE</span>
+              <p>One issue report per service.</p>
+            </div>
+            <div class="form-field">
+              <label for="issue-message">What should AdenClean know? <span aria-hidden="true">*</span></label>
+              <textarea id="issue-message" name="message" rows="5" minlength="10" maxlength="1200" required></textarea>
+              <span class="field-help">10–1,200 characters. Do not include payment details or entry codes.</span>
+            </div>
+            <label class="consent-check" for="issue-consent">
+              <input id="issue-consent" name="consent" type="checkbox" required>
+              <span>I agree that this private preview will store my report for AdenClean to review. <span aria-hidden="true">*</span></span>
+            </label>
+            <div class="form-actions">
+              <button class="button button-dark form-submit" type="submit">Send service issue <span aria-hidden="true">↗</span></button>
+            </div>
+          </form>
+          <p class="feedback-submitted" id="issue-submitted" hidden>Your report has been received. AdenClean will review it; email updates are not connected in this preview.</p>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
