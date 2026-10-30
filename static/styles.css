@@ -472,6 +472,12 @@ h1, h2, h3, p { margin-top: 0; }
 .contact-copy h2 { font-size: clamp(45px, 5vw, 66px); }
 .contact-copy h2 em { color: var(--lime); }
 .contact-copy > p:not(.eyebrow) { max-width: 325px; color: #c8d3c8; margin: 22px 0 25px; font-size: 12px; line-height: 1.8; }
+.contact-copy > .contact-area { max-width: none; margin: 15px 0 6px; color: var(--paper); }
+.contact-area strong { display: block; margin-bottom: 2px; color: var(--lime); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+.contact-details { display: grid; gap: 7px; margin: 0 0 24px; font-size: 12px; }
+.contact-details a { width: fit-content; color: var(--lime); text-decoration: underline; text-underline-offset: 3px; }
+.contact-details a:hover { color: var(--paper); }
+.contact-details a:focus-visible { outline: 3px solid var(--paper); outline-offset: 3px; }
 .button-cream { background: var(--paper); color: var(--ink); }
 .button-cream span { color: var(--clay); font-size: 15px; }
 .contact-art { position: relative; min-height: 431px; overflow: hidden; background: #d5ddcf; }
@@ -962,6 +968,8 @@ h1, h2, h3, p { margin-top: 0; }
 .feedback-private-link { display: inline-block; margin-top: 8px; color: var(--forest); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .feedback-private-link:focus-visible { outline: 3px solid var(--clay); outline-offset: 3px; }
 .policy-read-link { margin: -12px 0 25px; color: #647368; font-size: 11px; line-height: 1.6; }
+.feedback-contact { margin: -16px 0 25px; color: #647368; font-size: 11px; line-height: 1.7; }
+.feedback-contact a { color: var(--forest); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .policy-main { max-width: 960px; }
 .policy-heading { max-width: 710px; margin: 0 auto 35px; }
 .policy-section { max-width: 760px; margin: 16px auto; padding: clamp(20px, 4vw, 32px); border: 1px solid var(--line); background: #f7f5ec; }
@@ -972,7 +980,7 @@ h1, h2, h3, p { margin-top: 0; }
 .policy-section ul { display: grid; gap: 9px; margin: 12px 0; padding-left: 20px; }
 .policy-section a { color: var(--forest); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .policy-limits { border-left: 3px solid var(--clay); }
-.policy-section a:focus-visible, .policy-read-link a:focus-visible, .workflow-note-copy a:focus-visible, .policy-consent-links a:focus-visible {
+.policy-section a:focus-visible, .policy-read-link a:focus-visible, .feedback-contact a:focus-visible, .workflow-note-copy a:focus-visible, .policy-consent-links a:focus-visible {
   outline: 3px solid var(--clay);
   outline-offset: 3px;
 }

@@ -77,7 +77,7 @@ async function loadFeedback() {
       const statusMessages = {
         open: "Your report was received and is awaiting review. Reopen this private link later to check for updates.",
         in_review: "AdenClean is reviewing your report. Reopen this private link later to check for updates.",
-        resolved: "AdenClean marked this report resolved. If you still need help, contact AdenClean directly.",
+        resolved: "AdenClean marked this report resolved. If you still need help, use the contact details above.",
       };
       issueSubmitted.textContent = statusMessages[result.issueStatus]
         || "Your report was received. Reopen this private link later to check for updates.";
