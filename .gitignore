@@ -1,3 +1,10 @@
+# Local preview data
 /data/
-/__pycache__/
+
+# Python
+__pycache__/
 *.py[cod]
+
+# Local secrets
+.env
+.env.*
