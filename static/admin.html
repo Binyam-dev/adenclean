@@ -35,7 +35,10 @@
         <p class="admin-lede">Sign in to review customer requests, cleaner availability, service reviews, and reported issues.</p>
         <div class="admin-notice" id="admin-notice" role="status" aria-live="polite"></div>
         <form class="workflow-form admin-login-form" id="admin-login-form" hidden>
-          <input type="text" name="username" autocomplete="username" value="admin" hidden>
+          <div class="form-field">
+            <label for="admin-email">Admin email</label>
+            <input id="admin-email" name="email" type="email" autocomplete="username" maxlength="254" required>
+          </div>
           <div class="form-field">
             <label for="admin-password">Admin password</label>
             <input id="admin-password" name="password" type="password" autocomplete="current-password" required>

@@ -66,6 +66,7 @@ class StaticIntegrityTests(unittest.TestCase):
                 self.assertIn("__pycache__/", ignored)
                 self.assertIn("*.py[cod]", ignored)
                 self.assertIn(".env", ignored)
+                self.assertIn("/backups/", ignored)
 
 
 if __name__ == "__main__":
