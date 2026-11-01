@@ -97,6 +97,22 @@ def provision(tables_db, database_id, out=print):
             out(f"  index {table_id}.{key}")
 
 
+def explain_failure(error, out=print):
+    """Turn the common Appwrite failures into a plain message. Never prints the key."""
+    code = getattr(error, "code", 0)
+    detail = getattr(error, "message", str(error))
+    if code == 401:
+        out(
+            "Appwrite rejected the API key. Use the key named adenclean-setup (it needs the "
+            "Databases scopes), copied in full, for project " + os.environ.get("APPWRITE_PROJECT_ID", "?") + "."
+        )
+    elif code == 403 or "missing scopes" in str(detail):
+        out(f"The API key lacks a permission: {detail}. Create a key with all Databases scopes.")
+    else:
+        out(f"Appwrite returned an error ({code}): {detail}")
+    return 1
+
+
 def main():
     missing = [
         name
@@ -116,7 +132,12 @@ def main():
         .set_project(os.environ["APPWRITE_PROJECT_ID"])
         .set_key(os.environ["APPWRITE_API_KEY"])
     )
-    provision(TablesDB(client), os.environ.get("APPWRITE_DATABASE_ID", "adenclean"))
+    try:
+        provision(TablesDB(client), os.environ.get("APPWRITE_DATABASE_ID", "adenclean"))
+    except Exception as error:  # SDK and network errors
+        if hasattr(error, "code"):
+            return explain_failure(error)
+        raise
     print("Done. Next: python create_admin.py add you@example.com")
     return 0
 
