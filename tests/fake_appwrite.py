@@ -58,6 +58,7 @@ class FakeTablesDB:
     def list_rows(self, database_id, table_id, queries=None, **_):
         rows = [(row_id, dict(data)) for row_id, data in self._table(table_id).items()]
         limit, cursor, orders = 25, None, []
+        limits_seen = 0
         for raw in queries or []:
             query = json.loads(raw)
             method, attribute, values = query["method"], query.get("attribute"), query.get("values", [])
@@ -70,6 +71,9 @@ class FakeTablesDB:
             elif method in ("orderAsc", "orderDesc"):
                 orders.append((attribute, method == "orderDesc"))
             elif method == "limit":
+                limits_seen += 1
+                if limits_seen > 1:  # the real API does not accept repeated limits
+                    raise AppwriteException("duplicate limit", 400, "general_query_invalid")
                 limit = values[0]
             elif method == "cursorAfter":
                 cursor = values[0]

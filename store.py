@@ -514,15 +514,17 @@ class AppwriteStore:
     def _list(self, table, queries, limit=None):
         """List rows, following cursors in pages of 100. ``limit`` caps the total."""
         Query = self.Query
+        # Callers never pass their own limit query: exactly one is sent per request.
+        page_size = min(self.PAGE, limit) if limit is not None else self.PAGE
         rows, cursor = [], None
         while True:
-            page_queries = list(queries) + [Query.limit(self.PAGE)]
+            page_queries = list(queries) + [Query.limit(page_size)]
             if cursor:
                 page_queries.append(Query.cursor_after(cursor))
             result = self._call(self.db.list_rows, table_id=table, queries=page_queries)
             batch = list(result.rows)
             rows.extend(batch)
-            if len(batch) < self.PAGE or (limit is not None and len(rows) >= limit):
+            if len(batch) < page_size or (limit is not None and len(rows) >= limit):
                 break
             cursor = batch[-1].id
         rows = rows[:limit] if limit is not None else rows
@@ -530,7 +532,7 @@ class AppwriteStore:
 
     def _find_one(self, table, attribute, value):
         Query = self.Query
-        rows = self._list(table, [Query.equal(attribute, value), Query.limit(1)], limit=1)
+        rows = self._list(table, [Query.equal(attribute, value)], limit=1)
         return rows[0] if rows else None
 
     def _create(self, table, row_id, data):
@@ -673,7 +675,7 @@ class AppwriteStore:
 
     def has_admins(self):
         Query = self.Query
-        rows = self._list("admins", [Query.equal("active", 1), Query.limit(1)], limit=1)
+        rows = self._list("admins", [Query.equal("active", 1)], limit=1)
         return bool(rows)
 
     def get_admin_by_email(self, email):
