@@ -265,9 +265,41 @@ class SqliteStore:
                         active INTEGER NOT NULL DEFAULT 1,
                         created_at TEXT NOT NULL
                     );
+                    """
+                )
+                # CREATE TABLE does not upgrade existing development databases.
+                for table_name in ("customer_requests", "cleaner_availability"):
+                    columns = {
+                        row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")
+                    }
+                    if "status" not in columns:
+                        connection.execute(
+                            f"ALTER TABLE {table_name} ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
+                        )
+                    if "status_updated_at" not in columns:
+                        connection.execute(
+                            f"ALTER TABLE {table_name} ADD COLUMN status_updated_at TEXT NOT NULL DEFAULT ''"
+                        )
+                    connection.execute(
+                        f"""
+                        UPDATE {table_name}
+                        SET status_updated_at = created_at
+                        WHERE status_updated_at = ''
+                        """
+                    )
+
+                request_columns = {
+                    row[1] for row in connection.execute("PRAGMA table_info(customer_requests)")
+                }
+                if "feedback_token_hash" not in request_columns:
+                    connection.execute(
+                        "ALTER TABLE customer_requests ADD COLUMN feedback_token_hash TEXT"
+                    )
+                connection.execute(
+                    """
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_requests_feedback_token
                     ON customer_requests(feedback_token_hash)
-                    WHERE feedback_token_hash IS NOT NULL;
+                    WHERE feedback_token_hash IS NOT NULL
                     """
                 )
         except sqlite3.Error as error:
@@ -743,3 +775,4 @@ def open_store(environ=None, sqlite_path=None):
             environ.get("APPWRITE_DATABASE_ID", "adenclean"),
         )
     raise RuntimeError("ADENCLEAN_STORAGE must be 'appwrite' or 'sqlite'.")
+
