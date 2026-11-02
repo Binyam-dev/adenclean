@@ -3,6 +3,7 @@ const dashboardSection = document.querySelector("#admin-dashboard");
 const loginForm = document.querySelector("#admin-login-form");
 const loginNotice = document.querySelector("#admin-notice");
 const dashboardNotice = document.querySelector("#dashboard-notice");
+const emailInput = document.querySelector("#admin-email");
 const passwordInput = document.querySelector("#admin-password");
 const recordList = document.querySelector("#admin-record-list");
 const summary = document.querySelector("#admin-summary");
@@ -23,7 +24,7 @@ function showLogin(message = "", allowPasswordEntry = false) {
   loginForm.hidden = !allowPasswordEntry;
   setNotice(loginNotice, message, message.toLowerCase().includes("incorrect"));
   if (loginForm.hidden) return;
-  passwordInput.focus();
+  (emailInput.value ? passwordInput : emailInput).focus();
 }
 
 function showDashboard() {
@@ -48,7 +49,7 @@ async function checkSession() {
       return;
     }
     if (result.authenticated === false) {
-      showLogin("Sign in with the private admin password.", true);
+      showLogin("Sign in with your admin email and password.", true);
       return;
     }
     showDashboard();
@@ -69,7 +70,7 @@ loginForm.addEventListener("submit", async (event) => {
     await parseResponse(await fetch("/api/admin/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: passwordInput.value }),
+      body: JSON.stringify({ email: emailInput.value, password: passwordInput.value }),
     }));
     passwordInput.value = "";
     showDashboard();

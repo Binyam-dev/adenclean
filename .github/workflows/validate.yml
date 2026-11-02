@@ -25,8 +25,11 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
       - name: Check Python syntax
-        run: python -m py_compile main.py
+        run: python -m py_compile main.py store.py auth.py create_admin.py setup_appwrite.py export_backup.py
 
       - name: Check JavaScript syntax
         run: |

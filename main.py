@@ -3,29 +3,34 @@ import hmac
 import os
 import re
 import secrets
-import sqlite3
+import threading
 import time
 import uuid
 import hashlib
-from contextlib import closing
 from datetime import date, datetime, timezone
 from http.cookies import CookieError, SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
+
+import auth
+import store as storage
+from store import Conflict, NotFound, StoreError
 
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
-DATA_DIR = ROOT / "data"
-DATABASE_PATH = DATA_DIR / "adenclean.sqlite3"
 MAX_BODY_BYTES = 16 * 1024
 RATE_LIMIT_WINDOW_SECONDS = 15 * 60
 RATE_LIMIT_MAX_REQUESTS = 10
 ADMIN_SESSION_COOKIE = "adenclean_admin_session"
 ADMIN_SESSION_SECONDS = 8 * 60 * 60
-ADMIN_PASSWORD_MIN_LENGTH = 12
+ADMIN_RATE_LIMIT_MAX_REQUESTS = 120
+LOGIN_RATE_LIMIT_MAX_REQUESTS = 10
 RATE_LIMITS = {}
+STORE = None
+RATE_LIMIT_LOCK = threading.Lock()
+ADMIN_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
 SERVICE_TYPES = {
     "routine": "Routine home cleaning",
     "deep": "Deep cleaning",
@@ -34,12 +39,7 @@ SERVICE_TYPES = {
     "move-in-out": "Move-in / move-out",
 }
 PREFERRED_TIMES = {"morning", "afternoon", "flexible"}
-RECORD_TYPES = {
-    "requests": "customer_requests",
-    "availability": "cleaner_availability",
-    "reviews": "customer_reviews",
-    "issues": "service_issues",
-}
+RECORD_TYPES = storage.RECORD_TABLES
 RECORD_STATUSES = {
     "requests": {"pending", "approved", "declined", "completed", "cancelled"},
     "availability": {"pending", "approved", "declined"},
@@ -75,126 +75,6 @@ class ApiError(Exception):
     def __init__(self, status, message):
         self.status = status
         self.message = message
-
-
-def initialize_database():
-    DATA_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(DATA_DIR, 0o700)
-
-    try:
-        descriptor = os.open(
-            DATABASE_PATH,
-            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-            0o600,
-        )
-    except FileExistsError:
-        os.chmod(DATABASE_PATH, 0o600)
-    else:
-        os.close(descriptor)
-
-    with closing(sqlite3.connect(DATABASE_PATH)) as connection, connection:
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS customer_requests (
-                id TEXT PRIMARY KEY,
-                created_at TEXT NOT NULL,
-                full_name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                area TEXT NOT NULL,
-                service_type TEXT NOT NULL,
-                preferred_date TEXT NOT NULL,
-                preferred_time TEXT NOT NULL,
-                notes TEXT NOT NULL,
-                consent INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                status_updated_at TEXT NOT NULL DEFAULT '',
-                feedback_token_hash TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS cleaner_availability (
-                id TEXT PRIMARY KEY,
-                created_at TEXT NOT NULL,
-                full_name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                area TEXT NOT NULL,
-                service_types TEXT NOT NULL,
-                available_date TEXT NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
-                consent INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                status_updated_at TEXT NOT NULL DEFAULT ''
-            );
-
-            CREATE TABLE IF NOT EXISTS status_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                record_type TEXT NOT NULL,
-                record_id TEXT NOT NULL,
-                old_status TEXT,
-                new_status TEXT NOT NULL,
-                note TEXT NOT NULL DEFAULT '',
-                actor TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS customer_reviews (
-                id TEXT PRIMARY KEY,
-                request_id TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL,
-                rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-                message TEXT NOT NULL,
-                consent INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'new',
-                status_updated_at TEXT NOT NULL DEFAULT ''
-            );
-
-            CREATE TABLE IF NOT EXISTS service_issues (
-                id TEXT PRIMARY KEY,
-                request_id TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL,
-                message TEXT NOT NULL,
-                consent INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'open',
-                status_updated_at TEXT NOT NULL DEFAULT ''
-            );
-            """
-        )
-
-        for table_name in ("customer_requests", "cleaner_availability"):
-            columns = {
-                row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")
-            }
-            if "status" not in columns:
-                connection.execute(
-                    f"ALTER TABLE {table_name} ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
-                )
-            if "status_updated_at" not in columns:
-                connection.execute(
-                    f"ALTER TABLE {table_name} ADD COLUMN status_updated_at TEXT NOT NULL DEFAULT ''"
-                )
-            connection.execute(
-                f"""
-                UPDATE {table_name}
-                SET status_updated_at = created_at
-                WHERE status_updated_at = ''
-                """
-            )
-
-        request_columns = {
-            row[1] for row in connection.execute("PRAGMA table_info(customer_requests)")
-        }
-        if "feedback_token_hash" not in request_columns:
-            connection.execute(
-                "ALTER TABLE customer_requests ADD COLUMN feedback_token_hash TEXT"
-            )
-        connection.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_requests_feedback_token
-            ON customer_requests(feedback_token_hash)
-            WHERE feedback_token_hash IS NOT NULL
-            """
-        )
 
 
 def clean_text(value, label, max_length, required=True, allow_newlines=False):
@@ -301,60 +181,59 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             raise ApiError(400, "The request body must be an object.")
         return payload
 
-    def enforce_rate_limit(self):
+    def enforce_rate_limit(self, bucket="public", limit=RATE_LIMIT_MAX_REQUESTS,
+                           message="Too many submissions. Please try again later."):
         now = time.monotonic()
-        for address, timestamps in list(RATE_LIMITS.items()):
-            recent = [
-                timestamp
-                for timestamp in timestamps
-                if now - timestamp < RATE_LIMIT_WINDOW_SECONDS
-            ]
-            if recent:
-                RATE_LIMITS[address] = recent
-            else:
-                RATE_LIMITS.pop(address, None)
+        key = (bucket, self.client_address[0])
+        with RATE_LIMIT_LOCK:
+            for stored_key, timestamps in list(RATE_LIMITS.items()):
+                recent = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW_SECONDS]
+                if recent:
+                    RATE_LIMITS[stored_key] = recent
+                else:
+                    RATE_LIMITS.pop(stored_key, None)
+            recent_requests = RATE_LIMITS.get(key, [])
+            if len(recent_requests) >= limit:
+                raise ApiError(429, message)
+            recent_requests.append(now)
+            RATE_LIMITS[key] = recent_requests
 
-        client_address = self.client_address[0]
-        recent_requests = [
-            timestamp
-            for timestamp in RATE_LIMITS.get(client_address, [])
-            if now - timestamp < RATE_LIMIT_WINDOW_SECONDS
-        ]
-        if len(recent_requests) >= RATE_LIMIT_MAX_REQUESTS:
-            RATE_LIMITS[client_address] = recent_requests
-            raise ApiError(429, "Too many submissions. Please try again later.")
-        recent_requests.append(now)
-        RATE_LIMITS[client_address] = recent_requests
+    def send_storage_error(self, message):
+        self.send_json(500, {"ok": False, "error": message})
 
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == "/api/admin/session":
-            if not self.admin_secret_is_configured():
-                self.send_json(
-                    200,
-                    {
+            try:
+                setup_message = self.admin_setup_message()
+                if setup_message:
+                    payload = {
                         "ok": True,
                         "configured": False,
                         "authenticated": False,
-                        "message": self.admin_setup_message(),
-                    },
-                )
-            elif self.admin_session_is_valid():
-                self.send_json(
-                    200,
-                    {"ok": True, "configured": True, "authenticated": True},
-                )
-            else:
-                self.send_json(
-                    200,
-                    {"ok": True, "configured": True, "authenticated": False},
-                )
+                        "message": setup_message,
+                    }
+                else:
+                    payload = {
+                        "ok": True,
+                        "configured": True,
+                        "authenticated": self.current_admin() is not None,
+                    }
+            except StoreError:
+                self.send_storage_error("The request could not be completed. Please try again.")
+                return
+            self.send_json(200, payload)
             return
 
         if path == "/api/admin/records":
-            if not self.require_admin_session():
-                return
-            self.list_admin_records()
+            try:
+                if not self.require_admin_session():
+                    return
+                self.list_admin_records()
+            except ApiError as error:
+                self.send_json(error.status, {"ok": False, "error": error.message})
+            except StoreError:
+                self.send_storage_error("The records could not be loaded. Please try again.")
             return
 
         if path.startswith("/api/"):
@@ -377,32 +256,34 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
                 self.send_json(status, result)
             except ApiError as error:
                 self.send_json(error.status, {"ok": False, "error": error.message})
-            except sqlite3.Error:
-                self.send_json(
-                    500,
-                    {"ok": False, "error": "The feedback could not be saved. Please try again."},
-                )
+            except StoreError:
+                self.send_storage_error("The feedback could not be saved. Please try again.")
             return
 
         if path in {"/api/admin/session", "/api/admin/logout", "/api/admin/records"}:
             try:
                 if path == "/api/admin/session":
-                    self.enforce_rate_limit()
+                    self.enforce_rate_limit(
+                        bucket="login",
+                        limit=LOGIN_RATE_LIMIT_MAX_REQUESTS,
+                        message="Too many sign-in attempts. Please try again later.",
+                    )
                     self.create_admin_session()
                 elif path == "/api/admin/logout":
                     self.clear_admin_session()
                 else:
                     if not self.require_admin_session():
                         return
-                    self.enforce_rate_limit()
+                    self.enforce_rate_limit(
+                        bucket="admin",
+                        limit=ADMIN_RATE_LIMIT_MAX_REQUESTS,
+                        message="Too many changes in a short time. Please wait a moment.",
+                    )
                     self.update_admin_record()
             except ApiError as error:
                 self.send_json(error.status, {"ok": False, "error": error.message})
-            except sqlite3.Error:
-                self.send_json(
-                    500,
-                    {"ok": False, "error": "The request could not be completed. Please try again."},
-                )
+            except StoreError:
+                self.send_storage_error("The request could not be completed. Please try again.")
             return
 
         if path not in {"/api/service-requests", "/api/cleaner-availability"}:
@@ -424,8 +305,8 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             self.send_json(201, result)
         except ApiError as error:
             self.send_json(error.status, {"ok": False, "error": error.message})
-        except sqlite3.Error:
-            self.send_json(500, {"ok": False, "error": "The submission could not be saved. Please try again."})
+        except StoreError:
+            self.send_storage_error("The submission could not be saved. Please try again.")
 
     def save_service_request(self, payload):
         full_name = clean_text(payload.get("fullName"), "Name", 100)
@@ -447,40 +328,34 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         reference = uuid.uuid4().hex[:12].upper()
         feedback_token = secrets.token_urlsafe(32)
         feedback_token_hash = hashlib.sha256(feedback_token.encode("utf-8")).hexdigest()
+        created_at = datetime.now(timezone.utc).isoformat()
 
-        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection, connection:
-            created_at = datetime.now(timezone.utc).isoformat()
-            connection.execute(
-                """
-                INSERT INTO customer_requests (
-                    id, created_at, full_name, email, area, service_type,
-                    preferred_date, preferred_time, notes, consent, status, status_updated_at,
-                    feedback_token_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-                """,
-                (
-                    reference,
-                    created_at,
-                    full_name,
-                    email,
-                    area,
-                    service_type,
-                    preferred_date,
-                    preferred_time,
-                    notes,
-                    consent,
-                    created_at,
-                    feedback_token_hash,
-                ),
-            )
-            connection.execute(
-                """
-                INSERT INTO status_history (
-                    record_type, record_id, old_status, new_status, note, actor, created_at
-                ) VALUES ('requests', ?, NULL, 'pending', 'Inquiry received.', 'system', ?)
-                """,
-                (reference, created_at),
-            )
+        STORE.add_request(
+            {
+                "id": reference,
+                "created_at": created_at,
+                "full_name": full_name,
+                "email": email,
+                "area": area,
+                "service_type": service_type,
+                "preferred_date": preferred_date,
+                "preferred_time": preferred_time,
+                "notes": notes,
+                "consent": consent,
+                "status": "pending",
+                "status_updated_at": created_at,
+                "feedback_token_hash": feedback_token_hash,
+            },
+            {
+                "record_type": "requests",
+                "record_id": reference,
+                "old_status": None,
+                "new_status": "pending",
+                "note": "Inquiry received.",
+                "actor": "system",
+                "created_at": created_at,
+            },
+        )
         return reference, feedback_token
 
     def handle_customer_feedback(self, payload):
@@ -493,124 +368,92 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             raise ApiError(404, "That private feedback link is invalid.")
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection, connection:
-            connection.row_factory = sqlite3.Row
-            request = connection.execute(
-                """
-                SELECT id, status, service_type, preferred_date
-                FROM customer_requests
-                WHERE feedback_token_hash = ?
-                """,
-                (token_hash,),
-            ).fetchone()
-            if request is None:
-                raise ApiError(404, "That private feedback link is invalid.")
+        request = STORE.find_request_by_token_hash(token_hash)
+        if request is None:
+            raise ApiError(404, "That private feedback link is invalid.")
 
-            review_exists = connection.execute(
-                "SELECT 1 FROM customer_reviews WHERE request_id = ?",
-                (request["id"],),
-            ).fetchone() is not None
-            issue = connection.execute(
-                "SELECT status FROM service_issues WHERE request_id = ?",
-                (request["id"],),
-            ).fetchone()
-            issue_exists = issue is not None
+        review_exists = STORE.get_review_for_request(request["id"]) is not None
+        issue = STORE.get_issue_for_request(request["id"])
+        issue_exists = issue is not None
 
-            if action == "lookup":
-                return 200, {
-                    "ok": True,
-                    "ready": request["status"] == "completed",
-                    "status": request["status"],
-                    "serviceType": request["service_type"],
-                    "preferredDate": request["preferred_date"],
-                    "reviewSubmitted": review_exists,
-                    "issueSubmitted": issue_exists,
-                    "issueStatus": issue["status"] if issue else None,
-                }
+        if action == "lookup":
+            return 200, {
+                "ok": True,
+                "ready": request["status"] == "completed",
+                "status": request["status"],
+                "serviceType": request["service_type"],
+                "preferredDate": request["preferred_date"],
+                "reviewSubmitted": review_exists,
+                "issueSubmitted": issue_exists,
+                "issueStatus": issue["status"] if issue else None,
+            }
 
-            if request["status"] != "completed":
-                raise ApiError(
-                    409,
-                    "Feedback is available after AdenClean marks the service complete.",
+        if request["status"] != "completed":
+            raise ApiError(
+                409,
+                "Feedback is available after AdenClean marks the service complete.",
+            )
+
+        consent = clean_consent(payload.get("consent"))
+        message = clean_text(
+            payload.get("message"),
+            "Feedback",
+            1200,
+            allow_newlines=True,
+        )
+        if len(message) < 10:
+            raise ApiError(400, "Feedback must be at least 10 characters.")
+
+        created_at = datetime.now(timezone.utc).isoformat()
+        record_id = uuid.uuid4().hex[:12].upper()
+        if action == "review":
+            if review_exists:
+                raise ApiError(409, "A review has already been submitted for this service.")
+            rating = payload.get("rating")
+            if isinstance(rating, bool) or not isinstance(rating, int) or rating not in range(1, 6):
+                raise ApiError(400, "Choose a rating from 1 to 5.")
+            record_status = "new"
+            history_type = "reviews"
+            history_note = "Customer review received."
+            response_message = "Your review was saved for AdenClean to read."
+            try:
+                STORE.add_review(
+                    {
+                        "id": record_id,
+                        "request_id": request["id"],
+                        "created_at": created_at,
+                        "rating": rating,
+                        "message": message,
+                        "consent": consent,
+                        "status": "new",
+                        "status_updated_at": created_at,
+                    },
+                    self.feedback_history(history_type, record_id, record_status, history_note, created_at),
                 )
-
-            consent = clean_consent(payload.get("consent"))
-            message = clean_text(
-                payload.get("message"),
-                "Feedback",
-                1200,
-                allow_newlines=True,
-            )
-            if len(message) < 10:
-                raise ApiError(400, "Feedback must be at least 10 characters.")
-
-            created_at = datetime.now(timezone.utc).isoformat()
-            record_id = uuid.uuid4().hex[:12].upper()
-            if action == "review":
-                if review_exists:
-                    raise ApiError(409, "A review has already been submitted for this service.")
-                rating = payload.get("rating")
-                if isinstance(rating, bool) or not isinstance(rating, int) or rating not in range(1, 6):
-                    raise ApiError(400, "Choose a rating from 1 to 5.")
-                table_name = "customer_reviews"
-                record_status = "new"
-                try:
-                    connection.execute(
-                        """
-                        INSERT INTO customer_reviews (
-                            id, request_id, created_at, rating, message, consent,
-                            status, status_updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, 'new', ?)
-                        """,
-                        (
-                            record_id,
-                            request["id"],
-                            created_at,
-                            rating,
-                            message,
-                            consent,
-                            created_at,
-                        ),
-                    )
-                except sqlite3.IntegrityError as error:
-                    raise ApiError(409, "A review has already been submitted for this service.") from error
-                history_note = "Customer review received."
-                response_message = "Your review was saved for AdenClean to read."
-            else:
-                if issue_exists:
-                    raise ApiError(409, "A service issue has already been reported for this request.")
-                table_name = "service_issues"
-                record_status = "open"
-                try:
-                    connection.execute(
-                        """
-                        INSERT INTO service_issues (
-                            id, request_id, created_at, message, consent,
-                            status, status_updated_at
-                        ) VALUES (?, ?, ?, ?, ?, 'open', ?)
-                        """,
-                        (
-                            record_id,
-                            request["id"],
-                            created_at,
-                            message,
-                            consent,
-                            created_at,
-                        ),
-                    )
-                except sqlite3.IntegrityError as error:
-                    raise ApiError(409, "A service issue has already been reported for this request.") from error
-                history_note = "Customer service issue reported."
-                response_message = "Your service issue was sent to AdenClean for review."
-
-            connection.execute(
-                """
-                INSERT INTO status_history (
-                    record_type, record_id, old_status, new_status, note, actor, created_at
-                ) VALUES (?, ?, NULL, ?, ?, 'customer', ?)
-                """,
-                (("reviews" if action == "review" else "issues"), record_id, record_status, history_note, created_at),
-            )
+            except Conflict as error:
+                raise ApiError(409, "A review has already been submitted for this service.") from error
+        else:
+            if issue_exists:
+                raise ApiError(409, "A service issue has already been reported for this request.")
+            record_status = "open"
+            history_type = "issues"
+            history_note = "Customer service issue reported."
+            response_message = "Your service issue was sent to AdenClean for review."
+            try:
+                STORE.add_issue(
+                    {
+                        "id": record_id,
+                        "request_id": request["id"],
+                        "created_at": created_at,
+                        "message": message,
+                        "consent": consent,
+                        "status": "open",
+                        "status_updated_at": created_at,
+                    },
+                    self.feedback_history(history_type, record_id, record_status, history_note, created_at),
+                )
+            except Conflict as error:
+                raise ApiError(409, "A service issue has already been reported for this request.") from error
 
         return 201, {
             "ok": True,
@@ -619,6 +462,18 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             "message": response_message,
             "reviewSubmitted": review_exists or action == "review",
             "issueSubmitted": issue_exists or action == "issue",
+        }
+
+    @staticmethod
+    def feedback_history(record_type, record_id, status, note, created_at):
+        return {
+            "record_type": record_type,
+            "record_id": record_id,
+            "old_status": None,
+            "new_status": status,
+            "note": note,
+            "actor": "customer",
+            "created_at": created_at,
         }
 
     def save_cleaner_availability(self, payload):
@@ -636,155 +491,150 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             raise ApiError(400, "End time must be later than start time.")
         consent = clean_consent(payload.get("consent"))
         reference = uuid.uuid4().hex[:12].upper()
+        created_at = datetime.now(timezone.utc).isoformat()
 
-        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection, connection:
-            created_at = datetime.now(timezone.utc).isoformat()
-            connection.execute(
-                """
-                INSERT INTO cleaner_availability (
-                    id, created_at, full_name, email, area, service_types,
-                    available_date, start_time, end_time, consent, status, status_updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-                """,
-                (
-                    reference,
-                    created_at,
-                    full_name,
-                    email,
-                    area,
-                    json.dumps(cleaned_service_types),
-                    available_date,
-                    start_time,
-                    end_time,
-                    consent,
-                    created_at,
-                ),
-            )
-            connection.execute(
-                """
-                INSERT INTO status_history (
-                    record_type, record_id, old_status, new_status, note, actor, created_at
-                ) VALUES ('availability', ?, NULL, 'pending', 'Availability received.', 'system', ?)
-                """,
-                (reference, created_at),
-            )
+        STORE.add_availability(
+            {
+                "id": reference,
+                "created_at": created_at,
+                "full_name": full_name,
+                "email": email,
+                "area": area,
+                "service_types": json.dumps(cleaned_service_types),
+                "available_date": available_date,
+                "start_time": start_time,
+                "end_time": end_time,
+                "consent": consent,
+                "status": "pending",
+                "status_updated_at": created_at,
+            },
+            {
+                "record_type": "availability",
+                "record_id": reference,
+                "old_status": None,
+                "new_status": "pending",
+                "note": "Availability received.",
+                "actor": "system",
+                "created_at": created_at,
+            },
+        )
         return reference
 
-    def admin_secret_is_configured(self):
-        return not self.admin_setup_message()
+    # -- admin authentication --------------------------------------------------
 
     def admin_setup_message(self):
-        admin_password = os.environ.get("ADENCLEAN_ADMIN_PASSWORD", "")
-        if not admin_password:
-            return "ADENCLEAN_ADMIN_PASSWORD is not available to the app. Save it in Replit Secrets and restart."
-        if len(admin_password) < ADMIN_PASSWORD_MIN_LENGTH:
-            return (
-                "ADENCLEAN_ADMIN_PASSWORD must be at least "
-                f"{ADMIN_PASSWORD_MIN_LENGTH} characters. Replace it in Replit Secrets."
-            )
         if not os.environ.get("SESSION_SECRET"):
-            return "SESSION_SECRET is not available to the app. Check Replit Secrets and restart."
+            return "SESSION_SECRET is not available to the app. Add it to the app's secrets and restart."
+        if not STORE.has_admins():
+            return "No admin accounts exist yet. Create the first one with: python create_admin.py you@example.com"
         return ""
 
-    def make_admin_session(self):
-        expires_at = int(time.time()) + ADMIN_SESSION_SECONDS
-        session_payload = f"{expires_at}.{uuid.uuid4().hex}"
-        signature = hmac.new(
+    def admin_secret_is_configured(self):
+        return bool(os.environ.get("SESSION_SECRET"))
+
+    @staticmethod
+    def sign_session(payload):
+        return hmac.new(
             os.environ["SESSION_SECRET"].encode("utf-8"),
-            session_payload.encode("utf-8"),
+            payload.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
-        return f"{session_payload}.{signature}"
 
-    def admin_session_is_valid(self):
+    def make_admin_session(self, admin_id):
+        expires_at = int(time.time()) + ADMIN_SESSION_SECONDS
+        session_payload = f"{expires_at}.{admin_id}.{uuid.uuid4().hex}"
+        return f"{session_payload}.{self.sign_session(session_payload)}"
+
+    def current_admin(self):
+        """Return the signed-in admin's record, or None."""
         if not self.admin_secret_is_configured():
-            return False
+            return None
         cookie = SimpleCookie()
         try:
             cookie.load(self.headers.get("Cookie", ""))
             session = cookie.get(ADMIN_SESSION_COOKIE)
         except CookieError:
-            return False
+            return None
         if session is None:
-            return False
+            return None
 
         parts = session.value.split(".")
-        if len(parts) != 3 or not parts[0].isdigit():
-            return False
-        expires_at, nonce, supplied_signature = parts
-        if len(nonce) != 32 or int(expires_at) < int(time.time()):
-            return False
+        if len(parts) != 4 or not parts[0].isdigit():
+            return None
+        expires_at, admin_id, nonce, supplied_signature = parts
+        if int(expires_at) < int(time.time()):
+            return None
+        if not ADMIN_ID_PATTERN.fullmatch(admin_id) or len(nonce) != 32:
+            return None
+        expected_signature = self.sign_session(f"{expires_at}.{admin_id}.{nonce}")
+        if not hmac.compare_digest(supplied_signature, expected_signature):
+            return None
 
-        session_payload = f"{expires_at}.{nonce}"
-        expected_signature = hmac.new(
-            os.environ["SESSION_SECRET"].encode("utf-8"),
-            session_payload.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        return hmac.compare_digest(supplied_signature, expected_signature)
+        admin = STORE.get_admin(admin_id)
+        if admin is None or admin.get("active") != 1 or admin.get("role") != "admin":
+            return None
+        return admin
 
     def require_admin_session(self):
         if not self.admin_secret_is_configured():
-            self.send_json(
-                503,
-                {"ok": False, "error": self.admin_setup_message()},
-            )
+            self.send_json(503, {"ok": False, "error": self.admin_setup_message()})
             return False
-        if not self.admin_session_is_valid():
+        self.admin = self.current_admin()
+        if self.admin is None:
             self.send_json(401, {"ok": False, "error": "Sign in to continue."})
             return False
         return True
 
     def create_admin_session(self):
         if not self.admin_secret_is_configured():
-            self.send_json(
-                503,
-                {"ok": False, "error": self.admin_setup_message()},
-            )
+            self.send_json(503, {"ok": False, "error": self.admin_setup_message()})
             return
 
         payload = self.read_json()
-        supplied_password = payload.get("password")
-        if not isinstance(supplied_password, str) or not hmac.compare_digest(
-            supplied_password, os.environ["ADENCLEAN_ADMIN_PASSWORD"]
+        email = payload.get("email")
+        password = payload.get("password")
+        if (
+            not isinstance(email, str)
+            or not isinstance(password, str)
+            or len(email) > 254
+            or len(password) > auth.PASSWORD_MAX_LENGTH
         ):
-            self.send_json(401, {"ok": False, "error": "The password is incorrect."})
+            raise ApiError(400, "Enter your email and password.")
+
+        admin = STORE.get_admin_by_email(email.strip().lower())
+        if (
+            admin is not None
+            and admin.get("active") == 1
+            and admin.get("role") == "admin"
+            and auth.verify_password(password, admin["password_hash"])
+        ):
+            cookie = (
+                f"{ADMIN_SESSION_COOKIE}={self.make_admin_session(admin['id'])}; "
+                f"Max-Age={ADMIN_SESSION_SECONDS}; Path=/api/admin; "
+                "HttpOnly; Secure; SameSite=Strict"
+            )
+            self.send_json(
+                200,
+                {"ok": True, "authenticated": True},
+                headers={"Set-Cookie": cookie},
+            )
             return
 
-        cookie = (
-            f"{ADMIN_SESSION_COOKIE}={self.make_admin_session()}; "
-            f"Max-Age={ADMIN_SESSION_SECONDS}; Path=/api/admin; "
-            "HttpOnly; Secure; SameSite=Strict"
-        )
-        self.send_json(
-            200,
-            {"ok": True, "authenticated": True},
-            headers={"Set-Cookie": cookie},
-        )
+        if admin is None:
+            auth.burn_time(password)  # same cost whether or not the email exists
+        self.send_json(401, {"ok": False, "error": "The email or password is incorrect."})
 
     def clear_admin_session(self):
         cookie = (
             f"{ADMIN_SESSION_COOKIE}=; Max-Age=0; Path=/api/admin; "
             "HttpOnly; Secure; SameSite=Strict"
         )
-        self.send_json(
-            200,
-            {"ok": True},
-            headers={"Set-Cookie": cookie},
-        )
+        self.send_json(200, {"ok": True}, headers={"Set-Cookie": cookie})
+
+    # -- admin records -----------------------------------------------------------
 
     def list_admin_records(self):
-        if not self.admin_secret_is_configured():
-            self.send_json(
-                503,
-                {"ok": False, "error": self.admin_setup_message()},
-            )
-            return
-
-        query = urlsplit(self.path).query
-        from urllib.parse import parse_qs
-
-        parameters = parse_qs(query, keep_blank_values=True)
+        parameters = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
         record_type = parameters.get("type", ["requests"])[0]
         status_filter = parameters.get("status", ["all"])[0]
         if record_type not in RECORD_TYPES:
@@ -794,89 +644,20 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             self.send_json(400, {"ok": False, "error": "Choose a valid status filter."})
             return
 
-        table_name = RECORD_TYPES[record_type]
-        if record_type == "requests":
-            query_sql = """
-                SELECT id, created_at, full_name, email, area, service_type, preferred_date,
-                       preferred_time, notes, status, status_updated_at
-                FROM customer_requests
-            """
-            status_column = "status"
-            order_column = "created_at"
-        elif record_type == "availability":
-            query_sql = """
-                SELECT id, created_at, full_name, email, area, service_types, available_date,
-                       start_time, end_time, status, status_updated_at
-                FROM cleaner_availability
-            """
-            status_column = "status"
-            order_column = "created_at"
-        elif record_type == "reviews":
-            query_sql = """
-                SELECT r.id, r.request_id, r.created_at, r.rating, r.message, r.status,
-                       r.status_updated_at, c.full_name, c.email, c.area, c.service_type,
-                       c.preferred_date
-                FROM customer_reviews AS r
-                JOIN customer_requests AS c ON c.id = r.request_id
-            """
-            status_column = "r.status"
-            order_column = "r.created_at"
-        else:
-            query_sql = """
-                SELECT i.id, i.request_id, i.created_at, i.message, i.status,
-                       i.status_updated_at, c.full_name, c.email, c.area, c.service_type,
-                       c.preferred_date
-                FROM service_issues AS i
-                JOIN customer_requests AS c ON c.id = i.request_id
-            """
-            status_column = "i.status"
-            order_column = "i.created_at"
-        query_values = []
-        if status_filter != "all":
-            query_sql += f" WHERE {status_column} = ?"
-            query_values.append(status_filter)
-        query_sql += f" ORDER BY {order_column} DESC LIMIT 100"
-
-        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection:
-            connection.row_factory = sqlite3.Row
-            records = [
-                dict(row)
-                for row in connection.execute(query_sql, query_values).fetchall()
-            ]
-            counts = {
-                status: 0 for status in RECORD_STATUSES[record_type]
-            }
-            for row in connection.execute(
-                f"SELECT status, COUNT(*) AS total FROM {table_name} GROUP BY status"
-            ):
-                if row["status"] in counts:
-                    counts[row["status"]] = row["total"]
-
-            record_ids = [record["id"] for record in records]
-            histories = {record_id: [] for record_id in record_ids}
-            if record_ids:
-                placeholders = ",".join("?" for _ in record_ids)
-                for row in connection.execute(
-                    f"""
-                    SELECT record_id, old_status, new_status, note, actor, created_at
-                    FROM status_history
-                    WHERE record_type = ? AND record_id IN ({placeholders})
-                    ORDER BY created_at ASC, id ASC
-                    """,
-                    [record_type, *record_ids],
-                ):
-                    histories[row["record_id"]].append(
-                        {
-                            "oldStatus": row["old_status"],
-                            "newStatus": row["new_status"],
-                            "note": row["note"],
-                            "actor": row["actor"],
-                            "createdAt": row["created_at"],
-                        }
-                    )
-
+        records, counts, histories = STORE.list_records(
+            record_type, status_filter, sorted(RECORD_STATUSES[record_type])
+        )
         for record in records:
-            record["history"] = histories[record["id"]]
+            record["history"] = [
+                {
+                    "oldStatus": entry["old_status"],
+                    "newStatus": entry["new_status"],
+                    "note": entry["note"],
+                    "actor": entry["actor"],
+                    "createdAt": entry["created_at"],
+                }
+                for entry in histories.get(record["id"], [])
+            ]
         self.send_json(
             200,
             {
@@ -908,42 +689,40 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
             required=False,
             allow_newlines=True,
         )
-        table_name = RECORD_TYPES[record_type]
         changed_at = datetime.now(timezone.utc).isoformat()
 
-        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as connection, connection:
-            current = connection.execute(
-                f"SELECT status FROM {table_name} WHERE id = ?",
-                (record_id,),
-            ).fetchone()
-            if current is None:
-                raise ApiError(404, "That record could not be found.")
-            current_status = current[0]
-            if current_status != expected_status:
-                raise ApiError(409, "This record changed. Refresh the list and try again.")
-            if new_status == current_status:
-                raise ApiError(400, "Choose a different status.")
-            if new_status not in STATUS_TRANSITIONS[record_type][current_status]:
-                raise ApiError(400, "That status change is not allowed.")
+        try:
+            current_status = STORE.get_status(record_type, record_id)
+        except NotFound as error:
+            raise ApiError(404, "That record could not be found.") from error
+        if current_status != expected_status:
+            raise ApiError(409, "This record changed. Refresh the list and try again.")
+        if new_status == current_status:
+            raise ApiError(400, "Choose a different status.")
+        if new_status not in STATUS_TRANSITIONS[record_type][current_status]:
+            raise ApiError(400, "That status change is not allowed.")
 
-            updated = connection.execute(
-                f"""
-                UPDATE {table_name}
-                SET status = ?, status_updated_at = ?
-                WHERE id = ? AND status = ?
-                """,
-                (new_status, changed_at, record_id, current_status),
+        try:
+            STORE.set_status(
+                record_type,
+                record_id,
+                current_status,
+                new_status,
+                changed_at,
+                {
+                    "record_type": record_type,
+                    "record_id": record_id,
+                    "old_status": current_status,
+                    "new_status": new_status,
+                    "note": note,
+                    "actor": self.admin["email"],
+                    "created_at": changed_at,
+                },
             )
-            if updated.rowcount != 1:
-                raise ApiError(409, "This record changed. Refresh the list and try again.")
-            connection.execute(
-                """
-                INSERT INTO status_history (
-                    record_type, record_id, old_status, new_status, note, actor, created_at
-                ) VALUES (?, ?, ?, ?, ?, 'admin', ?)
-                """,
-                (record_type, record_id, current_status, new_status, note, changed_at),
-            )
+        except NotFound as error:
+            raise ApiError(404, "That record could not be found.") from error
+        except Conflict as error:
+            raise ApiError(409, "This record changed. Refresh the list and try again.") from error
 
         self.send_json(
             200,
@@ -957,12 +736,15 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
 
 
 def main():
+    global STORE
     if not STATIC_DIR.is_dir():
         raise RuntimeError(f"Static site directory not found: {STATIC_DIR}")
 
-    initialize_database()
+    STORE = storage.open_store()
     server = ThreadingHTTPServer(("0.0.0.0", 5000), AdenCleanHandler)
-    print("AdenClean is available on port 5000.")
+    print(f"AdenClean is available on port 5000 (storage: {STORE.name}).")
+    if STORE.name == "sqlite":
+        print("WARNING: using local SQLite. Set ADENCLEAN_STORAGE=appwrite before collecting real data.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

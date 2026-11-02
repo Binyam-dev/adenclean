@@ -44,7 +44,8 @@
           <li>After a completed service: a 1–5 rating, review text, or a service-issue report.</li>
         </ul>
         <h3>How information is handled</h3>
-        <p>Submissions are stored in this preview’s local SQLite database and are available in the password-protected AdenClean admin area for review. Reviews and issue reports are private; they are not displayed as public testimonials. This preview does not send email updates.</p>
+        <p>Storage depends on how this preview is configured. In Appwrite mode, used for production, the AdenClean server sends submissions to the configured Appwrite database for storage. In local SQLite mode, submissions stay in a database file on the machine running the app; that mode is for development and tests only. Do not submit real customer or cleaner information in local SQLite mode.</p>
+        <p>Submissions are available to authorized administrators in the AdenClean admin area, where each administrator signs in with an individual account. Reviews and issue reports are private; they are not displayed as public testimonials. This preview does not send email updates.</p>
         <p>There is no automatic deletion schedule or self-service tool to edit or delete a submission. Preview information may remain until an administrator removes it or resets the preview database. For questions about the preview or a submission, contact AdenClean at <a href="mailto:applications@adeneats.com">applications@adeneats.com</a> or <a href="tel:+12403426088">(240) 342-6088</a>.</p>
         <h3>Keep sensitive details out</h3>
         <p>Use a town or postal code only. Do not submit street addresses, entry or alarm codes, payment or bank details, or other sensitive information. This preview does not process payments.</p>
@@ -75,3 +76,4 @@
     </main>
   </body>
 </html>
+

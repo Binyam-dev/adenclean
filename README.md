@@ -1,38 +1,67 @@
 # AdenClean
 
-AdenClean is a home-cleaning service preview with customer inquiries, cleaner availability submissions, and a private admin review area.
+AdenClean is a home-cleaning service preview for Silver Spring, Maryland: customer inquiries, cleaner availability submissions, private customer feedback links, and a private admin review area with individual admin accounts.
 
-## Run the app
-
-The app uses Python's standard library and serves on port `5000`.
+## Run it locally
 
 ```bash
-python main.py
+pip install -r requirements.txt
+python main.py          # serves on port 5000
 ```
 
-In Replit, start the **Start application** workflow to open the preview.
+Without any settings the app stores data in a local SQLite file (`data/adenclean.sqlite3`) and prints a warning. That mode is for development and tests only. Do not collect real customer or cleaner information with it.
 
-## Required Replit Secrets
+## Production storage: Appwrite
 
-Add these in Replit Secrets; never commit their values:
+Production data lives in [Appwrite](https://appwrite.io) (TablesDB). Set these as secrets in the host (never commit them):
 
-- `ADENCLEAN_ADMIN_PASSWORD` — at least 12 characters.
-- `SESSION_SECRET` — a long, random secret used to sign admin sessions.
+| Setting | Value |
+| --- | --- |
+| `ADENCLEAN_STORAGE` | `appwrite` (the app refuses to start if the settings below are missing) |
+| `APPWRITE_ENDPOINT` | e.g. `https://nyc.cloud.appwrite.io/v1` |
+| `APPWRITE_PROJECT_ID` | your Appwrite project ID |
+| `APPWRITE_API_KEY` | server API key with database, table, column, index and row scopes |
+| `APPWRITE_DATABASE_ID` | optional, defaults to `adenclean` |
+| `SESSION_SECRET` | long random string used to sign admin sessions |
 
-The admin area is at `/admin.html`. It uses one shared password, not individual staff accounts.
+One-time setup:
 
-## Preview data and privacy
+```bash
+python setup_appwrite.py                    # creates the database, tables, columns and indexes
+python create_admin.py add you@example.com  # prompts for a 12+ character password
+```
 
-Customer requests, cleaner availability, reviews, and service issues are stored in the local SQLite database at `data/adenclean.sqlite3`. The `data/` directory is excluded from Git and Replit uploads.
+Tables are created with no client permissions, so only the server API key can read or write customer data. Keep that key out of the browser, the repository and chat.
 
-This storage is for preview use, not a durable production database. Before collecting real customer or cleaner information, choose durable storage and backups, define retention and deletion procedures, and replace shared-password access with individual accounts and roles. Keep test submissions out of launch data.
+## Admin accounts
 
-## Private beta
+Each person signs in at `/admin.html` with their own email and password (stored as salted `scrypt` hashes). There is no shared password.
 
-For a restricted beta, publish from Replit with **Sharing → Invite only** and invite only the intended testers. Visitors to a private deployment must sign in through Replit. Publishing and managing the invite list are Replit workspace actions; this repository does not set deployment visibility.
+```bash
+python create_admin.py add someone@example.com
+python create_admin.py list
+python create_admin.py disable someone@example.com   # ends their access immediately
+python create_admin.py enable someone@example.com
+```
 
-Do not switch the deployment to public until access controls, data storage, privacy terms, and operational support are ready.
+Status changes in the review history record the admin's email.
 
-## GitHub checks
+## Backups
 
-The workflow in `.github/workflows/validate.yml` runs Python, JavaScript, and static-link checks on pushes and pull requests. Keep the GitHub repository private during beta. Do not commit local databases, `.env` files, or secrets.
+Appwrite's free plan does not include automatic backups. Run `python export_backup.py [folder]` on a schedule and copy the file somewhere other than the machine running the app. Exports contain customer and cleaner details (admin password hashes are left out), so store them privately and delete old copies. `backups/` is git-ignored.
+
+## Known limits
+
+- Appwrite cannot write a record and its history entry in one transaction. If the second write fails, the record is still saved and the failure is logged.
+- Status changes use a lock inside one app process. Run a single instance; several instances could in rare cases overwrite each other's status change.
+- Rate limits are in memory and reset on restart.
+- Admin lists show the newest 100 records per type.
+- The app does not send emails or texts; approval is an internal decision, not a confirmed booking.
+
+## Privacy and beta access
+
+Before real customer data: confirm retention and deletion procedures, keep test submissions out of launch data, and keep the Replit deployment on **Sharing → Invite only** until access controls and support are ready. There is no self-service deletion tool yet; removing a person's records is a manual step in the Appwrite console.
+
+## Checks
+
+`.github/workflows/validate.yml` runs Python, JavaScript and test checks on every push (`python -m unittest discover -s tests -v`). The tests run the whole app against both the local SQLite store and an in-memory stand-in for Appwrite. They do not contact the real Appwrite service.
