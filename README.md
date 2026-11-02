@@ -50,6 +50,20 @@ Status changes in the review history record the admin's email.
 
 Appwrite's free plan does not include automatic backups. Run `python export_backup.py [folder]` on a schedule and copy the file somewhere other than the machine running the app. Exports contain customer and cleaner details (admin password hashes are left out), so store them privately and delete old copies. `backups/` is git-ignored.
 
+## Deploy the server (Render)
+
+`render.yaml` describes an always-on Render web service. In Render choose New > Blueprint,
+pick this repository, and paste `APPWRITE_API_KEY` (the runtime key with only `rows.read`
+and `rows.write`) when asked. `SESSION_SECRET` is generated for you. The service sets
+`ADENCLEAN_PROXY_HOPS=1` so rate limits count each visitor separately behind Render's
+proxy, and answers `/healthz` for health checks. Then use the service's `https://` address as
+`EXPO_PUBLIC_API_URL` for the mobile app (see `mobile/README.md`).
+
+## Mobile app
+
+The iPhone and Android app lives in `mobile/` (Expo). See `mobile/README.md` to run it, build
+it, and submit it to the App Store and Google Play.
+
 ## Known limits
 
 - Appwrite cannot write a record and its history entry in one transaction. If the second write fails, the record is still saved and the failure is logged.

@@ -155,7 +155,7 @@ async function submitWorkflowForm(form, endpoint, feedbackId, buildPayload, succ
         feedback,
         "success",
         successTitle,
-        `${result.message} Email updates are not connected in this preview.`,
+        `${result.message} We don’t send email updates.`,
         result.reference
       );
       if (endpoint === "/api/service-requests" && result.feedbackToken) {

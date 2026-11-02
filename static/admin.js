@@ -45,7 +45,7 @@ async function checkSession() {
     const response = await fetch("/api/admin/session", { cache: "no-store" });
     const result = await parseResponse(response);
     if (result.configured === false) {
-      showLogin(result.message || "Admin access is not configured for this preview.");
+      showLogin(result.message || "Admin access is not set up yet.");
       return;
     }
     if (result.authenticated === false) {
