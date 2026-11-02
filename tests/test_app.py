@@ -82,6 +82,18 @@ class AppCase:
 
     # -- tests -----------------------------------------------------------------
 
+    def test_public_privacy_notice_discloses_both_storage_modes(self):
+        # This notice is linked before consent and must be readable without an
+        # admin session, whether the server uses SQLite or Appwrite.
+        with urllib.request.urlopen(self.base + "/policies.html", timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            notice = response.read().decode("utf-8")
+        self.assertIn("Appwrite", notice)
+        self.assertIn("SQLite", notice)
+        self.assertIn("development and tests only", notice)
+        self.assertIn("Do not submit real customer or cleaner information", notice)
+        self.assertNotIn("Submissions are stored in this preview’s local SQLite database", notice)
+
     def test_admin_setup_message_until_first_admin_exists(self):
         status, body, _ = self.call("GET", "/api/admin/session")
         self.assertFalse(body["configured"])
@@ -304,3 +316,4 @@ class AppwriteAppTests(AppCase, unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

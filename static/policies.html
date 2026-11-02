@@ -46,7 +46,8 @@
         <h3>How we use it</h3>
         <p>We use your information to review your request or availability, follow up with you about it, and review feedback and issues. Reviews and issue reports are private; they are not displayed as public testimonials. We do not sell your information or share it for advertising.</p>
         <h3>Where it is stored and who can see it</h3>
-        <p>Submissions are stored in a hosted database (Appwrite) and handled by our server, which runs with a cloud hosting provider. These providers process data for us to run AdenClean. Only AdenClean administrators with an individual sign-in can view submissions. Server logs may include your IP address for security and to limit abuse.</p>
+        <p>The live service stores submissions in a hosted Appwrite database and handles them with our server, which runs with a cloud hosting provider. These providers process data for us to run AdenClean. Only AdenClean administrators, each with an individual sign-in, can view submissions. Server logs may include your IP address for security and to limit abuse.</p>
+        <p>The server also has a local SQLite mode, which keeps submissions in a file on the machine running it. That mode is for development and tests only. Do not submit real customer or cleaner information to a server running in local SQLite mode.</p>
         <h3>On your phone</h3>
         <p>After you send a request, the app saves a private link code for it in your phone’s secure storage so you can check its status and leave feedback later. Anyone with that code can view that request’s status and submit feedback for it. You can remove saved requests from your phone at any time under More, then Remove saved requests, or by deleting the app.</p>
         <h3>Keeping and deleting your information</h3>
@@ -84,3 +85,4 @@
     </main>
   </body>
 </html>
+
