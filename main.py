@@ -27,10 +27,12 @@ ADMIN_SESSION_COOKIE = "adenclean_admin_session"
 ADMIN_SESSION_SECONDS = 8 * 60 * 60
 ADMIN_RATE_LIMIT_MAX_REQUESTS = 120
 LOGIN_RATE_LIMIT_MAX_REQUESTS = 10
+LOOKUP_RATE_LIMIT_MAX_REQUESTS = 90  # read-only status checks from the app
 RATE_LIMITS = {}
 STORE = None
 RATE_LIMIT_LOCK = threading.Lock()
 ADMIN_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
+DEFAULT_PORT = 5000
 SERVICE_TYPES = {
     "routine": "Routine home cleaning",
     "deep": "Deep cleaning",
@@ -138,11 +140,37 @@ def clean_consent(value):
     return 1
 
 
+def proxy_hops(environ=None):
+    """How many reverse proxies sit in front of the app (0 = none, the default)."""
+    environ = os.environ if environ is None else environ
+    try:
+        return max(0, min(int(environ.get("ADENCLEAN_PROXY_HOPS", "0")), 5))
+    except ValueError:
+        return 0
+
+
+def client_address(socket_address, forwarded_for, hops):
+    """The address to rate-limit.
+
+    With no proxy, that is the socket peer. Behind ``hops`` trusted proxies each one
+    appends the address it saw, so the real client is the ``hops``-th entry from the
+    right; anything a client put further left in X-Forwarded-For is ignored.
+    """
+    if hops <= 0 or not forwarded_for:
+        return socket_address
+    entries = [entry.strip() for entry in forwarded_for.split(",") if entry.strip()]
+    if len(entries) < hops:
+        return socket_address
+    return entries[-hops][:64]
+
+
 class AdenCleanHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
     def end_headers(self):
+        if proxy_hops():  # served over HTTPS by the proxy
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -184,7 +212,12 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
     def enforce_rate_limit(self, bucket="public", limit=RATE_LIMIT_MAX_REQUESTS,
                            message="Too many submissions. Please try again later."):
         now = time.monotonic()
-        key = (bucket, self.client_address[0])
+        key = (
+            bucket,
+            client_address(
+                self.client_address[0], self.headers.get("X-Forwarded-For", ""), proxy_hops()
+            ),
+        )
         with RATE_LIMIT_LOCK:
             for stored_key, timestamps in list(RATE_LIMITS.items()):
                 recent = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW_SECONDS]
@@ -236,6 +269,10 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
                 self.send_storage_error("The records could not be loaded. Please try again.")
             return
 
+        if path == "/healthz":
+            self.send_json(200, {"ok": True})
+            return
+
         if path.startswith("/api/"):
             self.send_json(405, {"ok": False, "error": "This API only accepts submissions."})
             return
@@ -250,8 +287,12 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/customer-feedback":
             try:
-                self.enforce_rate_limit()
                 payload = self.read_json()
+                if payload.get("action") == "lookup":
+                    # Checking status only reads, and the app checks every saved request.
+                    self.enforce_rate_limit(bucket="lookup", limit=LOOKUP_RATE_LIMIT_MAX_REQUESTS)
+                else:
+                    self.enforce_rate_limit()
                 status, result = self.handle_customer_feedback(payload)
                 self.send_json(status, result)
             except ApiError as error:
@@ -741,8 +782,9 @@ def main():
         raise RuntimeError(f"Static site directory not found: {STATIC_DIR}")
 
     STORE = storage.open_store()
-    server = ThreadingHTTPServer(("0.0.0.0", 5000), AdenCleanHandler)
-    print(f"AdenClean is available on port 5000 (storage: {STORE.name}).")
+    port = int(os.environ.get("PORT", DEFAULT_PORT))
+    server = ThreadingHTTPServer(("0.0.0.0", port), AdenCleanHandler)
+    print(f"AdenClean is available on port {port} (storage: {STORE.name}).")
     if STORE.name == "sqlite":
         print("WARNING: using local SQLite. Set ADENCLEAN_STORAGE=appwrite before collecting real data.")
     try:

@@ -190,6 +190,45 @@ class AppCase:
         status, issues, _ = self.call("GET", "/api/admin/records?type=issues&status=open", cookie=first)
         self.assertEqual(len(issues["records"]), 1)
 
+    def test_health_check_needs_no_sign_in_and_hides_details(self):
+        status, body, _ = self.call("GET", "/healthz")
+        self.assertEqual((status, body), (200, {"ok": True}))
+
+    def test_rate_limit_separates_clients_behind_a_proxy(self):
+        os.environ["ADENCLEAN_PROXY_HOPS"] = "1"
+        self.addCleanup(os.environ.pop, "ADENCLEAN_PROXY_HOPS", None)
+
+        def post(client):
+            request = urllib.request.Request(
+                self.base + "/api/customer-feedback", method="POST",
+                data=b'{"action": "review", "token": "short"}',
+                headers={"Content-Type": "application/json", "X-Forwarded-For": f"9.9.9.9, {client}"},
+            )
+            try:
+                return urllib.request.urlopen(request, timeout=10).status
+            except urllib.error.HTTPError as error:
+                return error.code
+
+        codes = [post("203.0.113.1") for _ in range(main.RATE_LIMIT_MAX_REQUESTS + 1)]
+        self.assertEqual(codes[-1], 429)  # the first client ran out...
+        self.assertEqual(post("203.0.113.2"), 404)  # ...a different client behind the same proxy did not
+
+    def test_status_checks_have_their_own_larger_allowance(self):
+        lookup = {"action": "lookup", "token": "short"}
+        codes = [
+            self.call("POST", "/api/customer-feedback", lookup)[0]
+            for _ in range(main.RATE_LIMIT_MAX_REQUESTS + 15)
+        ]
+        self.assertNotIn(429, codes)  # more than the submission limit, still allowed
+        # ...and using it up does not block sending a request
+        self.assertEqual(self.submit_request()[0] != "", True)
+        # a flood of lookups is still cut off
+        flood = [
+            self.call("POST", "/api/customer-feedback", lookup)[0]
+            for _ in range(main.LOOKUP_RATE_LIMIT_MAX_REQUESTS)
+        ]
+        self.assertIn(429, flood)
+
     def test_bad_feedback_tokens_are_not_found(self):
         for token in ("short", "A" * 43, None):
             status, _, _ = self.call("POST", "/api/customer-feedback", {"action": "lookup", "token": token})
@@ -241,6 +280,24 @@ class AppCase:
         })
         self.assertEqual(status, 500)
         self.assertNotIn("boom", json.dumps(body))
+
+
+class DeploymentTests(unittest.TestCase):
+    def test_client_address_ignores_spoofed_forwarding_headers(self):
+        # one trusted proxy: it appends the address it saw, so take the rightmost entry
+        self.assertEqual(main.client_address("10.0.0.1", "6.6.6.6, 203.0.113.9", 1), "203.0.113.9")
+        # no proxy configured: headers are never trusted
+        self.assertEqual(main.client_address("198.51.100.4", "6.6.6.6", 0), "198.51.100.4")
+        # header shorter than the hop count: fall back to the socket address
+        self.assertEqual(main.client_address("10.0.0.1", "203.0.113.9", 2), "10.0.0.1")
+        self.assertEqual(main.client_address("10.0.0.1", "", 1), "10.0.0.1")
+
+    def test_proxy_hops_setting_is_bounded_and_safe(self):
+        self.assertEqual(main.proxy_hops({}), 0)
+        self.assertEqual(main.proxy_hops({"ADENCLEAN_PROXY_HOPS": "1"}), 1)
+        self.assertEqual(main.proxy_hops({"ADENCLEAN_PROXY_HOPS": "99"}), 5)
+        self.assertEqual(main.proxy_hops({"ADENCLEAN_PROXY_HOPS": "-3"}), 0)
+        self.assertEqual(main.proxy_hops({"ADENCLEAN_PROXY_HOPS": "x"}), 0)
 
 
 class SqliteAppTests(AppCase, unittest.TestCase):

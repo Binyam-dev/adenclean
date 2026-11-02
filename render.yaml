@@ -1,0 +1,27 @@
+# Render Blueprint: deploys AdenClean as an always-on web service.
+# In Render: New > Blueprint > pick this repository. Secrets marked sync: false are
+# entered once in the dashboard and never stored in Git.
+services:
+  - type: web
+    name: adenclean
+    runtime: python
+    plan: starter
+    region: virginia
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ADENCLEAN_STORAGE
+        value: appwrite
+      - key: ADENCLEAN_PROXY_HOPS
+        value: "1"
+      - key: APPWRITE_ENDPOINT
+        value: https://nyc.cloud.appwrite.io/v1
+      - key: APPWRITE_PROJECT_ID
+        value: 6ae7b1ed0005ab702dc9
+      - key: APPWRITE_API_KEY
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
