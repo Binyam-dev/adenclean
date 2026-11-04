@@ -1,23 +1,23 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { View } from 'react-native';
 
-import { Notice } from '@/components/Bits';
+import { Notice, Wordmark } from '@/components/Bits';
 import { Button } from '@/components/Button';
-import { Chip } from '@/components/Choice';
+import { EmptyState, Segmented } from '@/components/Controls';
 import { JobCard } from '@/components/JobCard';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { ApiError } from '@/lib/api';
 import { SUPPORT_EMAIL } from '@/lib/config';
 import { signOut, useSession } from '@/lib/session';
-import { space } from '@/lib/theme';
 import { isSignedOut, type Job } from '@/lib/v1';
+
+type Mode = 'hire' | 'work';
 
 /** One account, two modes: Hire (post jobs, pick offers) and Work (find jobs, send offers). */
 export default function Market() {
   const { user, loaded, client } = useSession();
-  const [mode, setMode] = useState<'hire' | 'work'>('hire');
+  const [mode, setMode] = useState<Mode>('hire');
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,14 +48,18 @@ export default function Market() {
   if (!user) {
     return (
       <Screen>
-        <Text variant="title" accessibilityRole="header">Hire or work</Text>
+        <Wordmark />
+        <Text variant="title" accessibilityRole="header">Hire a cleaner, or find cleaning work</Text>
         <Text tone="soft">
-          Post a cleaning job and choose from offers by local cleaners, or find jobs near you and name your own price.
+          Post a job and compare offers from local cleaners. Or, if you clean, see jobs near you and name your own price.
         </Text>
         <Button label="Sign in or create an account" onPress={() => router.push('/sign-in')} testID="market-signin" />
+        <Text variant="small" tone="soft">One account works for both. No password: we email you a code.</Text>
       </Screen>
     );
   }
+
+  const greeting = user.displayName ? `Hi, ${user.displayName}` : 'Hi';
 
   return (
     <Screen
@@ -65,29 +69,40 @@ export default function Market() {
         await load();
         setRefreshing(false);
       }}>
+      <Text variant="small" tone="soft">{greeting}</Text>
+      <Segmented<Mode> label="Mode" value={mode} onChange={setMode}
+        options={[{ id: 'hire', title: 'Hire' }, { id: 'work', title: 'Work' }]} />
       <Text variant="title" accessibilityRole="header">
         {mode === 'hire' ? 'Your jobs' : 'Jobs near you'}
       </Text>
-      <View style={{ flexDirection: 'row', gap: space.sm }} accessibilityRole="radiogroup">
-        <Chip label="Hire" selected={mode === 'hire'} onPress={() => setMode('hire')} />
-        <Chip label="Work" selected={mode === 'work'} onPress={() => setMode('work')} />
-      </View>
 
-      {mode === 'hire' ? (
+      {mode === 'hire' && jobs && jobs.length > 0 ? (
         <Button label="Post a cleaning job" onPress={() => router.push('/job/new')} testID="market-post" />
-      ) : !isCleaner ? (
-        <Notice title="Want to clean with AdenClean?">
-          {`Cleaners are checked before they can see jobs. Email ${SUPPORT_EMAIL} to apply. You set your own prices and choose which jobs to take.`}
-        </Notice>
-      ) : (
-        <Text tone="soft">You choose which jobs to answer and name your own price. Ignoring a job never counts against you.</Text>
-      )}
+      ) : null}
+      {mode === 'work' && isCleaner ? (
+        <Text tone="soft">You choose which jobs to answer and name your own price. Passing on a job never counts against you.</Text>
+      ) : null}
 
       {error ? <Notice kind="error">{error}</Notice> : null}
-      {jobs === null ? <Text tone="soft">Loading…</Text> : null}
-      {jobs && jobs.length === 0 && (mode === 'hire' || isCleaner) ? (
-        <Text tone="soft">{mode === 'hire' ? 'No jobs yet.' : 'No open jobs in your area right now. Pull down to check again.'}</Text>
+      {jobs === null && !error ? <Text tone="soft">Loading…</Text> : null}
+
+      {mode === 'hire' && jobs?.length === 0 ? (
+        <EmptyState
+          title="Post your first job"
+          body="Say what needs cleaning and when. Cleaners nearby send offers with their own price, and you choose."
+          action={<Button label="Post a cleaning job" onPress={() => router.push('/job/new')} testID="market-post" />}
+        />
       ) : null}
+      {mode === 'work' && !isCleaner ? (
+        <EmptyState
+          title="Clean with AdenClean"
+          body={`AdenClean reviews every cleaner before they can see jobs. Email ${SUPPORT_EMAIL} to apply. You set your prices and choose your jobs.`}
+        />
+      ) : null}
+      {mode === 'work' && isCleaner && jobs?.length === 0 ? (
+        <EmptyState title="No open jobs right now" body="New jobs in your area appear here. Pull down to check again." />
+      ) : null}
+
       {jobs?.map((job) => (
         <JobCard key={job.id} job={job} showStatus={mode === 'hire'} onPress={() => router.push(`/job/${job.id}`)} />
       ))}

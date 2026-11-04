@@ -8,7 +8,7 @@ import { usePalette } from './use-palette';
 
 type Props = Pick<
   TextInputProps,
-  'value' | 'onChangeText' | 'keyboardType' | 'autoCapitalize' | 'autoComplete' | 'textContentType' | 'returnKeyType' | 'onSubmitEditing' | 'maxLength'
+  'value' | 'onChangeText' | 'keyboardType' | 'autoCapitalize' | 'autoComplete' | 'textContentType' | 'returnKeyType' | 'onSubmitEditing' | 'maxLength' | 'placeholder'
 > & {
   label: string;
   hint?: string;

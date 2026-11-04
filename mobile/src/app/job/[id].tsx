@@ -1,8 +1,9 @@
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Notice, StatusPill } from '@/components/Bits';
+import { Header, NextSteps } from '@/components/Controls';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
 import { JobCard } from '@/components/JobCard';
@@ -132,17 +133,34 @@ export default function JobDetail() {
 
   return (
     <Screen>
-      <Button variant="quiet" label="Back" onPress={() => router.back()} />
+      <Header title={role === 'customer' ? 'Your job' : 'Job details'} />
       {error ? <Notice kind="error">{error}</Notice> : null}
       {job ? (
         <JobCard
           // A cleaner's view has no booked price; show the accepted offer's price instead.
           job={job.price_cents == null && offers[0]?.status === 'accepted' ? { ...job, price_cents: offers[0].price_cents } : job}
           showStatus
-          onPress={() => undefined}
         />
       ) : !error ? <Text tone="soft">Loading…</Text> : null}
-      {job?.notes ? <Text tone="soft">{job.notes}</Text> : null}
+      {job?.notes ? (
+        <View style={{ gap: space.xs }}>
+          <Text variant="bodyStrong">Notes from the customer</Text>
+          <Text tone="soft">{job.notes}</Text>
+        </View>
+      ) : null}
+
+      {job?.status === 'booked' ? (
+        <NextSteps
+          title="What happens next"
+          steps={role === 'customer'
+            ? [`The price is locked at ${formatCents(job.price_cents ?? offers.find((o) => o.status === 'accepted')?.price_cents ?? 0)}.`,
+               'AdenClean emails you and your cleaner to confirm the address and arrival time.',
+               'After the cleaning, you will be able to leave a review.']
+            : ['The price is locked. Keep the date free.',
+               'AdenClean emails you and the customer to confirm the address and arrival time.',
+               'Bring your supplies if the job says you will.']}
+        />
+      ) : null}
 
       {job && role === 'cleaner' && offers.length === 0 && job.status === 'open' ? (
         <View style={{ gap: space.md }}>
@@ -151,7 +169,7 @@ export default function JobDetail() {
           <Field label="Your price" value={newPrice} onChangeText={setNewPrice} keyboardType="decimal-pad"
             hint={parseDollars(newPrice) ? `You receive ${formatCents(payoutAfterFee(parseDollars(newPrice)!).payout)} after the ${formatCents(payoutAfterFee(parseDollars(newPrice)!).fee)} fee.` : undefined} />
           <Field label="Message" optional multiline maxLength={500} value={message} onChangeText={setMessage}
-            hint="When you can come, what you'll bring. No phone numbers: talk in the app." />
+            hint="When you can come and what you will bring. Don't include phone numbers or emails." />
           <Button label="Send offer" onPress={() => void sendOffer()} loading={sending} testID="offer-send" />
         </View>
       ) : null}

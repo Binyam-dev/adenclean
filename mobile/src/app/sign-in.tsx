@@ -1,11 +1,10 @@
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
-import { View } from 'react-native';
 
 import { Notice } from '@/components/Bits';
 import { Button } from '@/components/Button';
-import { Chip } from '@/components/Choice';
+import { Checkbox, Header } from '@/components/Controls';
 import { Field } from '@/components/Field';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
@@ -13,7 +12,6 @@ import { ApiError } from '@/lib/api';
 import { PRIVACY_URL, TERMS_URL } from '@/lib/config';
 import { checkCode } from '@/lib/market';
 import { signedIn } from '@/lib/session';
-import { space } from '@/lib/theme';
 import { checkEmail } from '@/lib/validation';
 import { Client } from '@/lib/v1';
 
@@ -62,9 +60,8 @@ export default function SignIn() {
 
   return (
     <Screen>
-      <Text variant="title" accessibilityRole="header">
-        {step === 'email' ? 'Sign in or create an account' : 'Check your email'}
-      </Text>
+      <Header title={step === 'email' ? 'Sign in or create an account' : 'Check your email'}
+        onBack={step === 'code' ? () => { setStep('email'); setCode(''); setError(null); } : undefined} />
       {step === 'email' ? (
         <>
           <Text tone="soft">We email you a 6-digit code. No password to remember.</Text>
@@ -81,14 +78,17 @@ export default function SignIn() {
             autoComplete="one-time-code" textContentType="oneTimeCode" testID="signin-code" />
           <Field label="Your first name" optional hint="Shown to the people you book with." value={name}
             onChangeText={setName} autoComplete="given-name" textContentType="givenName" maxLength={80} />
-          <View style={{ gap: space.sm }}>
-            <Chip label={accepted ? 'I accept the terms and privacy policy ✓' : 'I accept the terms and privacy policy'}
-              selected={accepted} onPress={() => setAccepted((v) => !v)} />
-            <View style={{ flexDirection: 'row', gap: space.lg }}>
-              <Button variant="quiet" label="Read the terms" onPress={() => void WebBrowser.openBrowserAsync(TERMS_URL)} />
-              <Button variant="quiet" label="Read the privacy policy" onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)} />
-            </View>
-          </View>
+          <Checkbox checked={accepted} onChange={setAccepted}>
+            <Text>
+              I agree to the{' '}
+              <Text tone="primary" style={{ textDecorationLine: 'underline' }} accessibilityRole="link"
+                onPress={() => void WebBrowser.openBrowserAsync(TERMS_URL)}>terms</Text>
+              {' '}and{' '}
+              <Text tone="primary" style={{ textDecorationLine: 'underline' }} accessibilityRole="link"
+                onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)}>privacy policy</Text>
+              . You must be 18 or older.
+            </Text>
+          </Checkbox>
           {error ? <Notice kind="error">{error}</Notice> : null}
           <Button label="Sign in" onPress={() => void verify()} loading={busy} testID="signin-verify" />
           <Button variant="quiet" label="Use a different email" onPress={() => { setStep('email'); setCode(''); setError(null); }} />

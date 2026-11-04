@@ -9,17 +9,14 @@ import { Text } from './Text';
 import { usePalette } from './use-palette';
 
 /** One job in a list. Customers see its status; cleaners see what the job asks for. */
-export function JobCard({ job, onPress, showStatus }: { job: Job; onPress: () => void; showStatus: boolean }) {
+export function JobCard({ job, onPress, showStatus }: { job: Job; onPress?: () => void; showStatus: boolean }) {
   const p = usePalette();
   const rooms = `${job.bedrooms} bed · ${job.bathrooms} bath`;
   const money = job.price_cents ? `Booked at ${formatCents(job.price_cents)}` : job.budget_cents ? `Budget ${formatCents(job.budget_cents)}` : 'No budget given';
   const tone = job.status === 'open' ? 'wait' : job.status === 'booked' ? 'good' : job.status === 'completed' ? 'done' : 'stop';
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${marketServiceTitle(job.service_type)}, ${rooms}, ${dateRange(job.date_from, job.date_to)}, ${money}`}
-      onPress={onPress}
-      style={({ pressed }) => [styles.card, { backgroundColor: p.surface, borderColor: p.line, opacity: pressed ? 0.85 : 1 }]}>
+  const summary = `${marketServiceTitle(job.service_type)}, ${rooms}, ${dateRange(job.date_from, job.date_to)}, ${money}`;
+  const body = (
+    <>
       <View style={styles.top}>
         <Text variant="heading">{marketServiceTitle(job.service_type)}</Text>
         {showStatus ? <StatusPill label={jobStatusLabel(job.status)} tone={tone} /> : null}
@@ -29,6 +26,19 @@ export function JobCard({ job, onPress, showStatus }: { job: Job; onPress: () =>
       </Text>
       <Text>{dateRange(job.date_from, job.date_to)}</Text>
       <Text variant="bodyStrong">{money}</Text>
+    </>
+  );
+  if (!onPress) {
+    return <View accessible accessibilityLabel={summary} style={[styles.card, { backgroundColor: p.surface, borderColor: p.line }]}>{body}</View>;
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={summary}
+      accessibilityHint="Opens the job"
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, { backgroundColor: p.surface, borderColor: p.line, opacity: pressed ? 0.85 : 1 }]}>
+      {body}
     </Pressable>
   );
 }
