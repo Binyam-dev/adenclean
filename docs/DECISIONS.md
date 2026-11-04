@@ -23,10 +23,12 @@ without a code change. Record each override here with a date.
 
 ## Questions only the owner can answer
 
-Asked once, Nov 4, 2026:
+Asked and answered Nov 4, 2026:
 
-1. Google Play account type and creation date. Known so far: personal account "iamdeveloping" (ID 5732651492387344661), creation date unknown.
-2. Legal entity name and EIN status.
-3. Whether to pay for an attorney opinion on classification before launch (strongly recommended).
-4. Support email and phone (repo uses applications@adeneats.com and (240) 342-6088; not yet confirmed).
-5. Who staffs vetting review and disputes.
+| # | Question | Owner's answer | What it means for the build |
+| --- | --- | --- | --- |
+| 1 | Google Play account type and creation date | Type: personal ("iamdeveloping", ID 5732651492387344661). Creation date: unknown; Play Console does not show it on the account page. | Plan for the 12-tester, 14-day closed test. The account is still in Google's new-account identity verification, which points to a recent account. |
+| 2 | Legal entity and EIN | In process | Stripe Connect live mode, 1099 reporting and Terms naming the platform wait for the entity and EIN. Test mode is unaffected. Launch gate. |
+| 3 | Attorney opinion on classification before launch | Yes | Keep the marketplace model; the attorney opinion is a launch gate in `COMPLIANCE.md`. |
+| 4 | Support email and phone | Same: applications@adeneats.com, (240) 342-6088 | Confirmed for store listings, policies and the app. |
+| 5 | Who staffs vetting review and disputes | A role, not yet a named person | Admin console uses roles: `vetting_reviewer` and `dispute_reviewer`, both assignable to any admin. Until someone is named, the owner holds both. Name the person before the closed beta, because disputes have a 2-business-day target. |
