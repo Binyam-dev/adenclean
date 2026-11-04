@@ -16,5 +16,9 @@
       "env": { "EXPO_PUBLIC_API_URL": "https://adenclean.onrender.com" }
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {
+      "ios": { "ascAppId": "6830724671", "appleTeamId": "R7BLH35ZRZ" }
+    }
+  }
 }
