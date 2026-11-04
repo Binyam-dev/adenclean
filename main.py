@@ -91,8 +91,6 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        if self.path.startswith("/store-assets/"):  # temporary: App Store Connect upload
-            self.send_header("Access-Control-Allow-Origin", "https://appstoreconnect.apple.com")
         super().end_headers()
 
     def send_json(self, status, payload, headers=None):
