@@ -1,0 +1,20 @@
+# Compliance matrix
+
+Not legal advice. Every row marked **verify** needs the primary source (statute or agency page)
+read and recorded here before code depends on it. Rows marked **launch gate** block public launch.
+
+| Area | Requirement as currently understood | Status | Source to confirm | Owner |
+| --- | --- | --- | --- | --- |
+| Worker classification (launch gate) | Maryland UI law uses the ABC test and presumes employment; a contract label does not decide it. Whether a pure marketplace is the "employing unit" is the open question. | verify | labor.maryland.gov/workplace/wfworkerfaqs.shtml; Md. Code Lab. & Empl. § 8-205 | Attorney |
+| Workplace Fraud Act expansion | 2025 HB 632 / SB 938 and 2026 SB 60 proposed extending it beyond construction and landscaping; passage not confirmed. | verify | mgaleg.maryland.gov | Engineer, then attorney |
+| Background checks (FCRA) | Standalone disclosure and authorization; individualized assessment; pre-adverse notice with report and Summary of Rights; waiting period; final notice; store only vendor reference and decision dates. | build in Phase 2 | FTC FCRA guidance; vendor docs | Engineer |
+| Fair-chance rules | Maryland Job Applicant Fairness Act (Lab. & Empl. §§ 3-1501 to 3-1505) and any Montgomery County ordinance: do they reach independent contractors? | verify | Md. Code; Montgomery County Code | Attorney |
+| Sales tax | Residential cleaning for individuals is not taxed; commercial and industrial cleaning is taxed at 6%. Launch residential only. | verify | marylandtaxes.gov janitorial services page | CPA |
+| 1099 reporting | 1099-K: above $20,000 and 200 transactions (2026). 1099-NEC/MISC: $2,000 for 2026 payments. Confirm which entity files under Stripe Connect. | verify | irs.gov; Stripe Connect tax docs | CPA |
+| Money transmission | Funds only through Stripe, never an Aden account. Confirm no Maryland money-transmitter license is needed. | verify | Maryland Commissioner of Financial Regulation | Attorney |
+| Insurance (launch gate) | Contingent general liability, occupational accident for providers, cyber liability; damage program capped at $1,000 per booking. | quote | Commercial broker | Owner |
+| Privacy | Maryland Online Data Privacy Act (effective Oct 1, 2025; processing from Apr 1, 2026; 35,000-consumer threshold). Design to its minimization and sensitive-data rules (precise geolocation) from day one. | verify | Act text; Baker Donelson summary | Engineer |
+| App Store | In-app account deletion; Stripe (not IAP) for services used outside the app (3.1.3(e)); report, block and moderation for user content (1.2); demo customer and cleaner accounts for review. | build | developer.apple.com/app-store/review/guidelines | Engineer |
+| Google Play | Personal accounts created after Nov 13, 2023: closed test, 12 testers, 14 days; Data safety form; web account-deletion link. | in progress | support.google.com/googleplay/android-developer/answer/14151465 | Owner |
+| Consumer protection | Show total price before payment; clear cancellation and refund terms; badges state exactly what was checked and when. | build | Maryland Consumer Protection Act | Engineer, attorney |
+| Messaging consent | Consent before marketing SMS or email (TCPA, CAN-SPAM). | build | FCC, FTC | Engineer |
