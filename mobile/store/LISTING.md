@@ -3,7 +3,7 @@
 Everything to paste into App Store Connect and Google Play Console. Every claim here is
 true of the app as built; if the app changes, change this file with it.
 
-Replace `https://YOUR-SERVER` with the deployed server address before submitting.
+Server: `https://adenclean.onrender.com`. Move it to Render's Starter plan before submitting, so reviewers never wait on a sleeping server.
 
 ## Names and links
 
@@ -11,8 +11,8 @@ Replace `https://YOUR-SERVER` with the deployed server address before submitting
 | --- | --- |
 | App name (both stores) | AdenClean |
 | Bundle ID / package | `com.adencommunity.clean` |
-| Support URL | `https://YOUR-SERVER/` |
-| Privacy policy URL | `https://YOUR-SERVER/policies.html#privacy` |
+| Support URL | `https://adenclean.onrender.com/` |
+| Privacy policy URL | `https://adenclean.onrender.com/policies.html#privacy` |
 | Support email | applications@adeneats.com |
 | Support phone | (240) 342-6088 |
 | Primary category | Lifestyle |
@@ -72,15 +72,12 @@ Encryption: the app uses HTTPS only, so answer "No" to non-exempt encryption
 > see them, open the Requests tab, find "Sent a request from the website?", and paste
 > this private link:
 >
-> `PASTE THE DEMO LINK HERE`
+> `PASTE THE DEMO LINK HERE` (saved outside the repo in `%LOCALAPPDATA%\AdenClean\apple-review-demo-link.txt`)
 >
 > It belongs to a demo request that is already marked complete. Nothing is paid for in the
 > app. Contact: applications@adeneats.com, (240) 342-6088.
 
-To make the demo link: on the AdenClean website send a cleaning request, copy the private
-feedback link shown after sending, sign in to `/admin.html`, move that request to
-Approved and then Completed, and paste the link above. Keep that request; do not delete it
-while the app is in review.
+The demo request already exists: reference `E530B601923D`, named "APPLE REVIEW DEMO - do not contact", status Completed (made 2026-11-04). Keep it while the app is in review. The link is kept out of the repo because anyone holding it can post a review for that request.
 
 Account deletion: the app has no accounts, so Apple's account-deletion rule does not
 apply. People can ask AdenClean to delete their information from More, and can remove saved
@@ -116,7 +113,7 @@ requests from their phone at any time.
 | Why it is collected | App functionality |
 | Is data encrypted in transit | Yes (HTTPS) |
 | Can people ask for their data to be deleted | Yes: by email from the app (More > Ask AdenClean to delete my information) and as described in the privacy policy |
-| Privacy policy | `https://YOUR-SERVER/policies.html#privacy` |
+| Privacy policy | `https://adenclean.onrender.com/policies.html#privacy` |
 
 Service providers that process data on AdenClean's behalf (the server host and the
 database host) are not "sharing" under Google's definition; confirm this against Google's
