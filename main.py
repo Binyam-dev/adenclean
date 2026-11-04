@@ -1,6 +1,7 @@
 """AdenClean web server: static site, JSON API and request plumbing.
 
-Endpoint logic lives in submissions.py (public forms) and admin_routes.py (admin);
+Endpoint logic lives in submissions.py (public forms), admin_routes.py (admin) and
+api_v1.py (marketplace, off unless MARKETPLACE_ENABLED=1);
 input validation lives in validation.py.
 """
 
@@ -14,6 +15,7 @@ from urllib.parse import urlsplit
 
 import store as storage
 from admin_routes import AdminRoutes
+from api_v1 import MarketplaceRoutes
 from store import StoreError
 from submissions import SubmissionRoutes
 from validation import ApiError
@@ -57,7 +59,7 @@ def client_address(socket_address, forwarded_for, hops):
     return entries[-hops][:64]
 
 
-class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
+class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
     # Drop clients that stall mid-request instead of holding a thread forever.
     timeout = 30
 
@@ -155,6 +157,9 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path.startswith("/api/v1/"):
+            self.handle_v1("GET")
+            return
         if path == "/api/admin/session":
             try:
                 setup_message = self.admin_setup_message()
@@ -204,6 +209,9 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if path.startswith("/api/v1/"):
+            self.handle_v1("POST")
+            return
         if path == "/api/customer-feedback":
             try:
                 payload = self.read_json()
