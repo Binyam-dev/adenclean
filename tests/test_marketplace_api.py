@@ -135,6 +135,21 @@ class MarketplaceCase(AppCase):
         self.assertEqual(status, 409)
         self.assertIn("own job", body["error"])
 
+    def test_single_job_view_is_scoped(self):
+        customer = self.sign_up("cust@example.com")
+        stranger = self.sign_up("other@example.com")
+        cleaner = self.make_cleaner("hana@example.com")
+        job_id = self.post_job(customer)[1]["job"]["id"]
+        owner_view = self.v1("GET", f"/api/v1/jobs/{job_id}", token=customer)[1]
+        self.assertEqual(owner_view["role"], "customer")
+        status, cleaner_view = self.v1("GET", f"/api/v1/jobs/{job_id}", token=cleaner)
+        self.assertEqual((status, cleaner_view["role"], cleaner_view["myOffer"]), (200, "cleaner", None))
+        self.assertNotIn("price_cents", cleaner_view["job"])
+        self.assertEqual(self.v1("GET", f"/api/v1/jobs/{job_id}", token=stranger)[0], 403)
+        self.v1("POST", f"/api/v1/jobs/{job_id}/offers", {"priceCents": 12_000}, cleaner)
+        mine = self.v1("GET", f"/api/v1/jobs/{job_id}", token=cleaner)[1]["myOffer"]
+        self.assertEqual(mine["price_cents"], 12_000)
+
     def test_job_rules(self):
         customer = self.sign_up("cust@example.com")
         self.assertEqual(self.post_job(customer, zip="90210")[0], 400)

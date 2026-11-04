@@ -1,6 +1,7 @@
 import { NativeTabs } from 'expo-router/native-tabs';
 
 import { usePalette } from '@/components/use-palette';
+import { MARKET_ENABLED } from '@/lib/market';
 
 export default function TabsLayout() {
   const p = usePalette();
@@ -18,6 +19,10 @@ export default function TabsLayout() {
       <NativeTabs.Trigger name="requests">
         <NativeTabs.Trigger.Label>Requests</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'tray', selected: 'tray.fill' }} md="inbox" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="market" hidden={!MARKET_ENABLED}>
+        <NativeTabs.Trigger.Label>Market</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} md="group" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="more">
         <NativeTabs.Trigger.Label>More</NativeTabs.Trigger.Label>

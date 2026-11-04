@@ -93,7 +93,18 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        dev_origin = os.environ.get("ADENCLEAN_DEV_CORS_ORIGIN", "")
+        # Local development only (Expo web on another port). Never set this in production.
+        if dev_origin.startswith("http://localhost:") and self.headers.get("Origin") == dev_origin:
+            self.send_header("Access-Control-Allow-Origin", dev_origin)
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204 if os.environ.get("ADENCLEAN_DEV_CORS_ORIGIN") else 405)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def send_json(self, status, payload, headers=None):
         self.discard_unread_body()

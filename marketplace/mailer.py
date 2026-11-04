@@ -27,6 +27,8 @@ def send_code(email, code, environ=None):
     current = mode(environ)
     if current == "dev":
         DEV_OUTBOX.append((email, code))
+        if environ.get("MAIL_DEV_PRINT") == "1":  # local runs only: lets a developer sign in
+            print(f"[dev mail] sign-in code for {email}: {code}", flush=True)
         return
     if current == "resend":
         key, sender = environ.get("RESEND_API_KEY"), environ.get("MAIL_FROM")

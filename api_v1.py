@@ -63,6 +63,7 @@ ROUTES = [  # (method, pattern, handler name)
     ("POST", r"/api/v1/jobs", "v1_create_job"),
     ("GET", r"/api/v1/jobs/mine", "v1_my_jobs"),
     ("GET", r"/api/v1/jobs/open", "v1_open_jobs"),
+    ("GET", r"/api/v1/jobs/(?P<job_id>[0-9a-f]{32})", "v1_get_job"),
     ("POST", r"/api/v1/jobs/(?P<job_id>[0-9a-f]{32})/cancel", "v1_cancel_job"),
     ("GET", r"/api/v1/jobs/(?P<job_id>[0-9a-f]{32})/offers", "v1_job_offers"),
     ("POST", r"/api/v1/jobs/(?P<job_id>[0-9a-f]{32})/offers", "v1_create_offer"),
@@ -243,6 +244,19 @@ class MarketplaceRoutes:
         rows = [self._expire_if_due(j, now) for j in self.market.open_jobs_in(self.mconf.service_zips)]
         visible = [j for j in rows if j["status"] == "open" and j["customer_id"] != user["id"]]
         self.send_json(200, {"ok": True, "jobs": [self._job_view(j, owner=False) for j in visible]})
+
+    def v1_get_job(self, job_id):
+        user, now = self.current_user(), _now()
+        job = self._expire_if_due(self.market.get_job(job_id), now)
+        if job["customer_id"] == user["id"]:
+            self.send_json(200, {"ok": True, "job": self._job_view(job, owner=True), "role": "customer"})
+            return
+        self._require_cleaner(user)
+        mine = [o for o in self.market.offers_for_job(job_id) if o["cleaner_id"] == user["id"]]
+        if job["status"] != "open" and not mine:
+            raise NotFound("job")
+        self.send_json(200, {"ok": True, "job": self._job_view(job, owner=False), "role": "cleaner",
+                             "myOffer": self._offer_view(mine[0], False) if mine else None})
 
     def v1_cancel_job(self, job_id):
         user, now = self.current_user(), _now()
