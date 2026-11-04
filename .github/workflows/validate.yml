@@ -29,7 +29,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check Python syntax
-        run: python -m py_compile main.py store.py auth.py create_admin.py setup_appwrite.py export_backup.py
+        run: python -m py_compile main.py validation.py submissions.py admin_routes.py store.py auth.py create_admin.py setup_appwrite.py export_backup.py
 
       - name: Check JavaScript syntax
         run: |
