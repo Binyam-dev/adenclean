@@ -165,8 +165,28 @@ def client_address(socket_address, forwarded_for, hops):
 
 
 class AdenCleanHandler(SimpleHTTPRequestHandler):
+    # Drop clients that stall mid-request instead of holding a thread forever.
+    timeout = 30
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+
+    def discard_unread_body(self):
+        """Read a request body nobody consumed (early 401/404/415/429 replies).
+
+        Closing a socket with unread data makes the OS send a TCP reset, so the client
+        sees "connection reset" instead of our error message (always on Windows, and
+        sometimes through proxies). Oversized bodies are not read; the connection closes.
+        """
+        if getattr(self, "_body_read_for", None) is self.headers:
+            return
+        self._body_read_for = self.headers
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if 0 < length <= MAX_BODY_BYTES:
+            self.rfile.read(length)
 
     def end_headers(self):
         if proxy_hops():  # served over HTTPS by the proxy
@@ -177,6 +197,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def send_json(self, status, payload, headers=None):
+        self.discard_unread_body()
         encoded = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -200,6 +221,7 @@ class AdenCleanHandler(SimpleHTTPRequestHandler):
         if content_length > MAX_BODY_BYTES:
             raise ApiError(413, "The submission is too large.")
 
+        self._body_read_for = self.headers
         try:
             payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
