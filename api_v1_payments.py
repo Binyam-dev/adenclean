@@ -164,7 +164,8 @@ class PaymentRoutes:
             raise ApiError(403, "Only the customer can tip.")
         secret = self._call_stripe(bookings.start_tip, self.market, self.gateway(), booking,
                                    self.read_json().get("tipCents"), self.mconf, _now())
-        self.send_json(200, {"ok": True, "clientSecret": secret})
+        self.send_json(200, {"ok": True, "clientSecret": secret,
+                             "publishableKey": os.environ.get("STRIPE_PUBLISHABLE_KEY", "")})
 
     # -- Stripe webhook and admin sweep -----------------------------------------------
 

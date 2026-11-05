@@ -54,6 +54,36 @@ export type NewJob = {
   notes?: string;
 };
 
+export type Vetting = {
+  status: 'applied' | 'in_review' | 'approved' | 'pre_adverse' | 'denied' | 'withdrawn';
+  identity_status: 'not_started' | 'pending' | 'verified' | 'failed';
+  background_status: 'not_started' | 'invited' | 'clear' | 'consider' | 'suspended';
+  consent_at: string | null;
+  dispute_deadline: string | null;
+  dispute_open: number;
+};
+
+export type Booking = {
+  job_id: string;
+  price_cents: number;
+  tip_cents: number;
+  payment_status: 'unpaid' | 'paid' | 'refunded';
+  payout_status: 'none' | 'sent';
+  starts_on: string;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
+  confirmed_at: string | null;
+  cancelled_by: 'customer' | 'cleaner' | null;
+  total_cents?: number;
+  fee_cents?: number;
+  payout_cents?: number;
+};
+
+/** Where a cleaner's Stripe payout setup stands. "off" means payments are not turned on. */
+export type PayoutState = 'off' | 'none' | 'incomplete' | 'ready';
+
+export type PaymentStart = { clientSecret: string; publishableKey: string };
+
 export class Client {
   constructor(
     private token: string | null,
@@ -153,6 +183,87 @@ export class Client {
 
   async answer(offerId: string, action: 'accept' | 'decline' | 'withdraw'): Promise<void> {
     await this.call('POST', `/api/v1/offers/${offerId}/${action}`, {});
+  }
+
+  // -- cleaner vetting -------------------------------------------------------------
+
+  /** The signed-in person's cleaner application, or null if they have not applied. */
+  async vetting(): Promise<Vetting | null> {
+    try {
+      return (await this.call('GET', '/api/v1/cleaner/status')).vetting as Vetting;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  async applyToClean(): Promise<Vetting> {
+    return (await this.call('POST', '/api/v1/cleaner/apply', { over18: true })).vetting as Vetting;
+  }
+
+  async disclosure(): Promise<{ version: string; text: string }> {
+    const p = await this.call('GET', '/api/v1/cleaner/disclosure');
+    return { version: String(p.version), text: String(p.text) };
+  }
+
+  async authorizeBackgroundCheck(fullName: string): Promise<Vetting> {
+    const p = await this.call('POST', '/api/v1/cleaner/authorize', { authorize: true, fullName: fullName.trim() });
+    return p.vetting as Vetting;
+  }
+
+  /** A Stripe Identity page to open in the browser. */
+  async identityLink(): Promise<string> {
+    return String((await this.call('POST', '/api/v1/cleaner/identity', {})).url);
+  }
+
+  /** A Checkr form to open in the browser. The cleaner enters their SSN there, never in this app. */
+  async backgroundLink(): Promise<string> {
+    return String((await this.call('POST', '/api/v1/cleaner/background', {})).url);
+  }
+
+  async disputeDecision(): Promise<Vetting> {
+    return (await this.call('POST', '/api/v1/cleaner/dispute', {})).vetting as Vetting;
+  }
+
+  // -- payouts and bookings ----------------------------------------------------------
+
+  async payoutState(): Promise<PayoutState> {
+    try {
+      const p = await this.call('POST', '/api/v1/payouts/refresh', {});
+      return p.payoutsEnabled ? 'ready' : 'incomplete';
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return 'none';
+      if (e instanceof ApiError && e.status === 503) return 'off';
+      throw e;
+    }
+  }
+
+  /** A Stripe page where the cleaner adds their bank details. */
+  async payoutLink(): Promise<string> {
+    return String((await this.call('POST', '/api/v1/payouts/onboard', {})).url);
+  }
+
+  async booking(jobId: string): Promise<Booking> {
+    return (await this.call('GET', `/api/v1/jobs/${jobId}/booking`)).booking as Booking;
+  }
+
+  async startPayment(jobId: string): Promise<PaymentStart> {
+    const p = await this.call('POST', `/api/v1/jobs/${jobId}/pay`, {});
+    return { clientSecret: String(p.clientSecret), publishableKey: String(p.publishableKey ?? '') };
+  }
+
+  async startTip(jobId: string, tipCents: number): Promise<PaymentStart> {
+    const p = await this.call('POST', `/api/v1/jobs/${jobId}/tip`, { tipCents });
+    return { clientSecret: String(p.clientSecret), publishableKey: String(p.publishableKey ?? '') };
+  }
+
+  async bookingStep(jobId: string, step: 'check-in' | 'check-out' | 'confirm'): Promise<void> {
+    await this.call('POST', `/api/v1/jobs/${jobId}/${step}`, {});
+  }
+
+  async cancelBooking(jobId: string): Promise<{ refundCents: number; cleanerFeeCents: number }> {
+    const p = await this.call('POST', `/api/v1/jobs/${jobId}/cancel-booking`, {});
+    return { refundCents: Number(p.refundCents ?? 0), cleanerFeeCents: Number(p.cleanerFeeCents ?? 0) };
   }
 }
 

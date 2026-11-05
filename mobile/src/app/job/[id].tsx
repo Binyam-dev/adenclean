@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Notice, StatusPill } from '@/components/Bits';
+import { BookingPanel } from '@/components/BookingPanel';
 import { Header, NextSteps } from '@/components/Controls';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
@@ -160,6 +161,10 @@ export default function JobDetail() {
                'AdenClean emails you and the customer to confirm the address and arrival time.',
                'Bring your supplies if the job says you will.']}
         />
+      ) : null}
+
+      {job && ['booked', 'in_progress', 'awaiting_confirmation', 'completed', 'cancelled'].includes(job.status) && offers.some((o) => o.status === 'accepted') ? (
+        <BookingPanel client={client} jobId={job.id} role={role} jobStatus={job.status} onChanged={load} />
       ) : null}
 
       {job && role === 'cleaner' && offers.length === 0 && job.status === 'open' ? (

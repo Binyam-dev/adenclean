@@ -115,7 +115,9 @@ class PaymentsCase(MarketplaceCase):
         self.assertEqual([e["entry_type"] for e in self.ledger(job_id)], ["charge"])  # recorded once
 
     def test_late_customer_cancellation_pays_the_cleaner_and_refunds_the_rest(self):
-        tomorrow = (datetime.now(timezone.utc) + timedelta(hours=20)).date().isoformat()
+        # The server starts a job at noon UTC on its date. Use the next noon, which is always under 24 hours away.
+        now = datetime.now(timezone.utc)
+        tomorrow = (now.date() if now.hour < 12 else now.date() + timedelta(days=1)).isoformat()
         customer, _, job_id = self.booked_job(price=10_000, dateFrom=tomorrow, dateTo=tomorrow)
         self.pay(customer, job_id)
         status, body = self.v1("POST", f"/api/v1/jobs/{job_id}/cancel", {}, customer)

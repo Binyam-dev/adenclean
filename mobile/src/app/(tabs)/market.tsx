@@ -8,7 +8,6 @@ import { JobCard } from '@/components/JobCard';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { ApiError } from '@/lib/api';
-import { SUPPORT_EMAIL } from '@/lib/config';
 import { signOut, useSession } from '@/lib/session';
 import { isSignedOut, type Job } from '@/lib/v1';
 
@@ -96,7 +95,8 @@ export default function Market() {
       {mode === 'work' && !isCleaner ? (
         <EmptyState
           title="Clean with AdenClean"
-          body={`AdenClean reviews every cleaner before they can see jobs. Email ${SUPPORT_EMAIL} to apply. You set your prices and choose your jobs.`}
+          body="AdenClean checks every cleaner's ID and background before they see jobs. You set your prices and choose your jobs."
+          action={<Button label="Apply to clean" onPress={() => router.push('/cleaner')} testID="market-apply" />}
         />
       ) : null}
       {mode === 'work' && isCleaner && jobs?.length === 0 ? (
