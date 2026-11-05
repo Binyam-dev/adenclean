@@ -116,7 +116,9 @@ function configureStatusOptions() {
     availability: ["all", "pending", "approved", "declined"],
     reviews: ["all", "new", "reviewed"],
     issues: ["all", "open", "in_review", "resolved"],
+    vetting: ["all"],
   };
+  statusFilter.closest("label").hidden = recordType === "vetting";
   const labels = {
     all: "All statuses",
     pending: "Pending",
@@ -144,6 +146,7 @@ function configureStatusOptions() {
 
 async function loadRecords() {
   if (dashboardSection.hidden) return;
+  if (recordType === "vetting") return loadVetting();
   recordList.setAttribute("aria-busy", "true");
   setNotice(dashboardNotice, "");
   try {

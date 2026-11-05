@@ -20,7 +20,7 @@ import main  # noqa: E402
 import store as storage  # noqa: E402
 from fake_stripe import FakeStripe  # noqa: E402
 from marketplace.checkr_gateway import sign_for_tests  # noqa: E402
-from test_app import HAVE_APPWRITE  # noqa: E402
+from test_app import HAVE_APPWRITE, PASSWORD  # noqa: E402
 from test_marketplace_api import MarketplaceCase  # noqa: E402
 
 if HAVE_APPWRITE:
@@ -176,6 +176,21 @@ class VettingCase(MarketplaceCase):
         self.assertEqual(self.identity_event(uid, verified=False), 200)
         self.assertEqual(self.decide(uid, action="approve")[0], 409)
         self.assertEqual(self.decide(uid, action="decline_identity", note="Selfie did not match the ID")[1]["vetting"]["status"], "denied")
+
+    def test_admin_page_endpoints_sit_under_the_admin_cookie_path(self):
+        """A browser sends the admin cookie only under its Path. The admin page must call
+        endpoints inside that path, so the review queue works from the page, not just from tests."""
+        token, uid = self.checked("clear")
+        cookie = self.admin()
+        status, _, headers = self.call("POST", "/api/admin/session", {"email": "ops@example.com", "password": PASSWORD})
+        cookie_path = [p.split("=", 1)[1] for p in headers["Set-Cookie"].split("; ") if p.startswith("Path=")][0]
+        page_urls = [f"/api/admin/vetting", f"/api/admin/vetting/{uid}"]
+        self.assertTrue(all(u.startswith(cookie_path) for u in page_urls), (cookie_path, page_urls))
+        status, body, _ = self.call("GET", page_urls[0], cookie=cookie)
+        self.assertEqual((status, [q["user_id"] for q in body["queue"]]), (200, [uid]))
+        status, body, _ = self.call("POST", page_urls[1], {"action": "approve"}, cookie=cookie)
+        self.assertEqual((status, body["vetting"]["status"]), (200, "approved"))
+        self.assertEqual(self.call("GET", page_urls[0])[0], 401)  # no cookie, no queue
 
     def test_applicants_must_be_adults_and_apply_once(self):
         token = self.sign_up("teen@example.com")

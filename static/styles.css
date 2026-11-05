@@ -990,3 +990,12 @@ h1, h2, h3, p { margin-top: 0; }
   .policy-heading { margin-bottom: 25px; }
   .policy-section p, .policy-section li { font-size: 11px; }
 }
+
+/* Cleaner applicants (admin) */
+.admin-record-actions textarea, .admin-record-actions select { padding: 8px 10px; border: 1px solid rgba(28,59,50,.23); background: #fbfaf4; color: var(--ink); font: inherit; font-size: 10px; }
+.admin-record-actions textarea:focus-visible, .admin-record-actions select:focus-visible { outline: 3px solid var(--clay); outline-offset: 2px; }
+.admin-help { margin: 0; max-width: 62ch; color: #4b5d52; font-size: 10px; line-height: 1.55; }
+.admin-confirm { display: flex !important; grid-template-columns: none; align-items: flex-start; gap: 8px; max-width: 62ch !important; color: var(--ink) !important; font-weight: 500 !important; line-height: 1.45; }
+.admin-confirm input { min-height: 0; margin-top: 2px; }
+.status-pre_adverse { color: #783e2b; background: #f2e4dc; }
+.admin-filter-label[hidden] { display: none; }

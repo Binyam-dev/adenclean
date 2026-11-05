@@ -166,10 +166,19 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
     def send_storage_error(self, message):
         self.send_json(500, {"ok": False, "error": message})
 
+    def admin_vetting_alias(self, method):
+        """The admin session cookie is only sent under /api/admin, so the vetting review
+        endpoints are reachable there too. Same handlers, same admin-session check."""
+        self.path = "/api/v1/admin/vetting" + self.path[len("/api/admin/vetting"):]
+        self.handle_v1(method)
+
     def do_GET(self):
         path = urlsplit(self.path).path
         if path.startswith("/api/v1/"):
             self.handle_v1("GET")
+            return
+        if path.startswith("/api/admin/vetting"):
+            self.admin_vetting_alias("GET")
             return
         if path == "/api/admin/session":
             try:
@@ -222,6 +231,9 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
         path = urlsplit(self.path).path
         if path.startswith("/api/v1/"):
             self.handle_v1("POST")
+            return
+        if path.startswith("/api/admin/vetting"):
+            self.admin_vetting_alias("POST")
             return
         if path == "/api/customer-feedback":
             try:
