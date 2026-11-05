@@ -89,4 +89,64 @@ MARKETPLACE_SCHEMA = {
         ],
         "indexes": [("idx_user", "key", ["user_id"])],
     },
+    # -- Phase 2: money ------------------------------------------------------------
+    "bookings": {
+        "columns": [
+            ("job_id", VARCHAR, 36, True),
+            ("offer_id", VARCHAR, 36, True),
+            ("customer_id", VARCHAR, 36, True),
+            ("cleaner_id", VARCHAR, 36, True),
+            ("price_cents", INTEGER, None, True),
+            ("fee_bps", INTEGER, None, True),  # fee rate frozen at booking time
+            ("tip_cents", INTEGER, None, True),
+            ("payment_status", VARCHAR, 20, True),  # unpaid | paid | refunded
+            ("payment_intent_id", VARCHAR, 80, False),
+            ("charge_id", VARCHAR, 80, False),
+            ("payout_status", VARCHAR, 20, True),  # none | sent
+            ("starts_on", VARCHAR, 10, True),
+            ("checked_in_at", VARCHAR, 40, False),
+            ("checked_out_at", VARCHAR, 40, False),
+            ("confirmed_at", VARCHAR, 40, False),
+            ("cancelled_by", VARCHAR, 20, False),
+            ("created_at", VARCHAR, 40, True),
+            ("updated_at", VARCHAR, 40, True),
+        ],
+        "indexes": [
+            ("uniq_job", "unique", ["job_id"]),  # one booking per job
+            ("idx_customer", "key", ["customer_id"]),
+            ("idx_cleaner", "key", ["cleaner_id"]),
+            ("idx_pi", "key", ["payment_intent_id"]),
+        ],
+    },
+    "ledger_entries": {  # append-only; never updated or deleted
+        "columns": [
+            ("booking_id", VARCHAR, 36, True),
+            ("entry_type", VARCHAR, 30, True),  # charge | tip_charge | refund | transfer
+            ("amount_cents", INTEGER, None, True),
+            ("direction", VARCHAR, 4, True),  # in (to the platform) | out
+            ("stripe_ref", VARCHAR, 80, False),
+            ("idempotency_key", VARCHAR, 120, True),
+            ("created_at", VARCHAR, 40, True),
+        ],
+        "indexes": [
+            ("uniq_idem", "unique", ["idempotency_key"]),
+            ("idx_booking", "key", ["booking_id"]),
+        ],
+    },
+    "payout_accounts": {
+        "columns": [
+            ("user_id", VARCHAR, 36, True),
+            ("stripe_account_id", VARCHAR, 80, True),
+            ("payouts_enabled", INTEGER, None, True),
+            ("updated_at", VARCHAR, 40, True),
+        ],
+        "indexes": [("uniq_user", "unique", ["user_id"]), ("idx_account", "key", ["stripe_account_id"])],
+    },
+    "webhook_events": {  # row id is the Stripe event id, so a replay is a Conflict
+        "columns": [
+            ("event_type", VARCHAR, 80, True),
+            ("received_at", VARCHAR, 40, True),
+        ],
+        "indexes": [],
+    },
 }

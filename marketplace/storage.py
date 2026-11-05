@@ -184,3 +184,54 @@ class MarketplaceStore:
 
     def update_offer(self, offer_id, fields):
         self.t.update("offers", offer_id, fields)
+
+    # bookings and money
+    def create_booking(self, row):
+        self.t.insert("bookings", row)
+
+    def get_booking(self, booking_id):
+        return self.t.get("bookings", booking_id)
+
+    def has_webhook_event(self, event_id):
+        return bool(self.t.find("webhook_events", {"id": event_id}, limit=1))
+
+    def booking_for_job(self, job_id):
+        rows = self.t.find("bookings", {"job_id": job_id}, limit=1)
+        return rows[0] if rows else None
+
+    def booking_by_payment_intent(self, payment_intent_id):
+        rows = self.t.find("bookings", {"payment_intent_id": payment_intent_id}, limit=1)
+        return rows[0] if rows else None
+
+    def update_booking(self, booking_id, fields):
+        self.t.update("bookings", booking_id, fields)
+
+    def bookings_awaiting_release(self):
+        return [b for b in self.t.find("bookings", {"payout_status": "none", "payment_status": "paid"})
+                if b.get("checked_out_at") and not b.get("confirmed_at")]
+
+    def add_ledger_entry(self, row):
+        """Append one entry. Raises store.Conflict if its idempotency key was already used."""
+        self.t.insert("ledger_entries", row)
+
+    def ledger_for(self, booking_id):
+        return self.t.find("ledger_entries", {"booking_id": booking_id}, order_desc="created_at")
+
+    def payout_account(self, user_id):
+        rows = self.t.find("payout_accounts", {"user_id": user_id}, limit=1)
+        return rows[0] if rows else None
+
+    def payout_account_by_stripe_id(self, stripe_account_id):
+        rows = self.t.find("payout_accounts", {"stripe_account_id": stripe_account_id}, limit=1)
+        return rows[0] if rows else None
+
+    def save_payout_account(self, row):
+        existing = self.payout_account(row["user_id"])
+        if existing:
+            self.t.update("payout_accounts", existing["id"], {k: v for k, v in row.items() if k not in ("id", "user_id")})
+        else:
+            self.t.insert("payout_accounts", row)
+
+    def record_webhook_event(self, event_id, event_type, received_at):
+        """Raises store.Conflict when this event id was already processed."""
+        self.t.insert("webhook_events", {"id": event_id, "event_type": event_type, "received_at": received_at})

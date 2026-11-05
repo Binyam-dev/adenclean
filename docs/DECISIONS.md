@@ -20,6 +20,11 @@ without a code change. Record each override here with a date.
 | Offer expiry | 24 h | config | Assumed |
 | Job expiry | 72 h without an accepted offer | config | Assumed |
 | Server instances | Exactly one, because Appwrite has no conditional updates or transactions | README, `marketplace/locks.py` | Constraint |
+| When the customer is charged (Nov 4, 2026) | At payment, right after booking, not as a held authorization. Funds wait in the platform Stripe balance and go to the cleaner only after confirmation. Reason: card authorizations expire after 7 days (Stripe docs) and jobs can be 30 days out; refunds do not reverse transfers (Stripe docs), so nothing is transferred early. | `marketplace/bookings.py` | Decided |
+| Cancellation clock (Nov 4, 2026) | "24 hours before the start" is measured from noon UTC (before 8 a.m. Maryland time) on the booked start date, since jobs have a date window, not a time yet | `marketplace/bookings.py` | Revisit when bookings get a start time |
+| Payout setup before quoting (Nov 4, 2026) | A cleaner must finish Stripe payout setup before sending offers, so every booked job can be paid out and a late-cancellation fee always reaches them | `api_v1_payments.py` | Decided |
+| Fee rate per booking | Frozen at booking; a later change to `PLATFORM_FEE_BPS` affects only new bookings | `bookings.fee_bps` | Decided |
+| Live payments gate | The server refuses a live Stripe key unless `STRIPE_LIVE_OK=1` is set, which needs the owner's approval and a signed-off attorney opinion | `marketplace/stripe_gateway.py` | Launch gate |
 
 ## Questions only the owner can answer
 

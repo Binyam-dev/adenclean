@@ -11,7 +11,8 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
-from marketplace import accounts, jobs, locks, mailer, offers
+from api_v1_payments import PAYMENT_ROUTES, PaymentRoutes
+from marketplace import accounts, bookings, jobs, locks, mailer, offers
 from marketplace import config as mconfig
 from marketplace.storage import MarketplaceStore, tables_for
 from store import Conflict, NotFound, StoreError
@@ -73,7 +74,7 @@ ROUTES = [  # (method, pattern, handler name)
 ]
 
 
-class MarketplaceRoutes:
+class MarketplaceRoutes(PaymentRoutes):
     # -- plumbing --------------------------------------------------------------
 
     @property
@@ -96,7 +97,7 @@ class MarketplaceRoutes:
         if not enabled():
             self.send_json(404, {"ok": False, "error": "That endpoint was not found."})
             return
-        for route_method, pattern, name in ROUTES:
+        for route_method, pattern, name in ROUTES + PAYMENT_ROUTES:
             match = re.fullmatch(pattern, path)
             if match and route_method == method:
                 try:
@@ -260,6 +261,8 @@ class MarketplaceRoutes:
 
     def v1_cancel_job(self, job_id):
         user, now = self.current_user(), _now()
+        if self.market.get_job(job_id)["status"] != "open" and self.market.booking_for_job(job_id):
+            return self.v1_cancel_booking(job_id)  # refunds and late fees apply
         with locks.BOOKING_LOCK:
             job = self.market.get_job(job_id)
             if job["customer_id"] != user["id"]:
@@ -296,6 +299,7 @@ class MarketplaceRoutes:
         self._require_cleaner(user)
         p = self.read_json()
         job = self._expire_if_due(self.market.get_job(job_id), now)
+        self.require_payouts_ready(user)
         offer, flags = offers.make_offer(uuid.uuid4().hex, job, user["id"], p.get("priceCents"), cfg)
         row = {
             "id": offer.id, "job_id": job_id, "cleaner_id": user["id"], "price_cents": offer.price_cents,
@@ -356,6 +360,7 @@ class MarketplaceRoutes:
                                              "price_cents": accepted.price_cents,
                                              "status_updated_at": now.isoformat()})
             self._close_other_offers(booked["id"], keep=accepted.id, now=now)
+            bookings.create_booking(market, booked, accepted, self.mconf, now)
 
         booked, accepted = locks.accept_offer(
             market.get_job, lambda oid: _offer_from_row(market.get_offer(oid)), save,
