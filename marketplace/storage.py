@@ -232,6 +232,24 @@ class MarketplaceStore:
         else:
             self.t.insert("payout_accounts", row)
 
+    # vetting
+    def get_vetting(self, user_id):
+        rows = self.t.find("vetting", {"id": user_id}, limit=1)
+        return rows[0] if rows else None
+
+    def vetting_by_candidate(self, candidate_ref):
+        rows = self.t.find("vetting", {"candidate_ref": candidate_ref}, limit=1)
+        return rows[0] if rows else None
+
+    def save_vetting(self, record, created=False):
+        if created:
+            self.t.insert("vetting", record)
+        else:
+            self.t.update("vetting", record["id"], {k: v for k, v in record.items() if k != "id"})
+
+    def vetting_queue(self, status):
+        return self.t.find("vetting", {"status": status}, order_desc="updated_at")
+
     def record_webhook_event(self, event_id, event_type, received_at):
         """Raises store.Conflict when this event id was already processed."""
         self.t.insert("webhook_events", {"id": event_id, "event_type": event_type, "received_at": received_at})

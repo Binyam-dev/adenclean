@@ -149,4 +149,28 @@ MARKETPLACE_SCHEMA = {
         ],
         "indexes": [],
     },
+    # -- Phase 2: vetting (row id = the cleaner's user id; no report contents stored) ------
+    "vetting": {
+        "columns": [
+            ("status", VARCHAR, 20, True),  # applied | in_review | pre_adverse | approved | denied
+            ("consent_at", VARCHAR, 40, False),
+            ("consent_name", VARCHAR, 120, False),
+            ("disclosure_version", VARCHAR, 20, False),
+            ("identity_status", VARCHAR, 20, True),
+            ("identity_ref", VARCHAR, 80, False),
+            ("background_status", VARCHAR, 20, True),
+            ("candidate_ref", VARCHAR, 80, False),
+            ("report_ref", VARCHAR, 80, False),
+            ("pre_adverse_at", VARCHAR, 40, False),
+            ("dispute_deadline", VARCHAR, 40, False),
+            ("dispute_open", INTEGER, None, True),
+            ("final_adverse_at", VARCHAR, 40, False),
+            ("decision_reason", VARCHAR, 40, False),
+            ("assessment_note", TEXT, None, False),
+            ("decided_by", VARCHAR, 254, False),
+            ("created_at", VARCHAR, 40, True),
+            ("updated_at", VARCHAR, 40, True),
+        ],
+        "indexes": [("idx_status", "key", ["status"]), ("idx_candidate", "key", ["candidate_ref"])],
+    },
 }

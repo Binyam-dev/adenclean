@@ -178,6 +178,12 @@ class PaymentRoutes:
             event = verify_webhook(payload, self.headers.get("Stripe-Signature"), os.environ.get("STRIPE_WEBHOOK_SECRET", ""))
         except StripeError as error:
             raise ApiError(400, str(error)) from error
+        if event["type"].startswith("identity."):
+            if self.market.has_webhook_event(event["id"]):
+                return self.send_json(200, {"ok": True, "result": "duplicate"})
+            result = self.handle_identity_event(event)
+            self.market.record_webhook_event(event["id"], event["type"], _now().isoformat())
+            return self.send_json(200, {"ok": True, "result": result})
         result = self._call_stripe(bookings.handle_event, self.market, self.gateway(), event, _now())
         self.send_json(200, {"ok": True, "result": result})
 

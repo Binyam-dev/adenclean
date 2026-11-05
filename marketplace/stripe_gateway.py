@@ -90,6 +90,13 @@ class StripeGateway:
     def retrieve_account(self, account_id):
         return self._request("GET", f"/accounts/{urllib.parse.quote(account_id)}")
 
+    # Stripe Identity: government ID plus a matching selfie, hosted by Stripe
+    def create_identity_session(self, user_id, return_url, idempotency_key):
+        return self._request("POST", "/identity/verification_sessions", {
+            "type": "document", "options": {"document": {"require_matching_selfie": True}},
+            "metadata": {"user_id": user_id}, "return_url": return_url,
+        }, idempotency_key)
+
     # Charging the customer, paying the cleaner, refunds
     def create_payment_intent(self, amount_cents, transfer_group, metadata, idempotency_key):
         return self._request("POST", "/payment_intents", {

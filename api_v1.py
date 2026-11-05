@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 from api_v1_payments import PAYMENT_ROUTES, PaymentRoutes
+from api_v1_vetting import VETTING_ROUTES, VettingRoutes, vetting_required
 from marketplace import accounts, bookings, jobs, locks, mailer, offers
 from marketplace import config as mconfig
 from marketplace.storage import MarketplaceStore, tables_for
@@ -74,7 +75,7 @@ ROUTES = [  # (method, pattern, handler name)
 ]
 
 
-class MarketplaceRoutes(PaymentRoutes):
+class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
     # -- plumbing --------------------------------------------------------------
 
     @property
@@ -97,7 +98,7 @@ class MarketplaceRoutes(PaymentRoutes):
         if not enabled():
             self.send_json(404, {"ok": False, "error": "That endpoint was not found."})
             return
-        for route_method, pattern, name in ROUTES + PAYMENT_ROUTES:
+        for route_method, pattern, name in ROUTES + PAYMENT_ROUTES + VETTING_ROUTES:
             match = re.fullmatch(pattern, path)
             if match and route_method == method:
                 try:
@@ -377,6 +378,10 @@ class MarketplaceRoutes(PaymentRoutes):
         user = self.market.find_user_by_email(clean_email(p.get("email")))
         if not user or user["status"] != "active":
             raise NotFound("user")
+        if p.get("active") is True and vetting_required():
+            record = self.market.get_vetting(user["id"])
+            if not record or record["status"] != "approved":
+                raise ApiError(409, "Approve this cleaner through vetting first.")
         roles = accounts.roles_of(user)
         roles = roles | {"cleaner"} if p.get("active") is True else roles - {"cleaner"}
         self.market.update_user(user["id"], {"roles": ",".join(sorted(roles))})

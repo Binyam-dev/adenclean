@@ -43,6 +43,13 @@ class FakeStripe:
     def retrieve_account(self, account_id):
         return dict(self.accounts[account_id])
 
+    def create_identity_session(self, user_id, return_url, idempotency_key):
+        self.calls.append(("identity_session", user_id))
+        def make():
+            sid = self._new("vs")
+            return {"id": sid, "url": f"https://verify.stripe.test/{sid}", "metadata": {"user_id": user_id}}
+        return self._once(idempotency_key, make)
+
     def create_payment_intent(self, amount_cents, transfer_group, metadata, idempotency_key):
         self.calls.append(("payment_intent", amount_cents, transfer_group, dict(metadata)))
         def make():

@@ -25,7 +25,7 @@ NEXT_WEEK = (date.today() + timedelta(days=7)).isoformat()
 
 class MarketplaceCase(AppCase):
     def setUp(self):
-        for key, value in {"MARKETPLACE_ENABLED": "1", "MAIL_MODE": "dev"}.items():
+        for key, value in {"MARKETPLACE_ENABLED": "1", "MAIL_MODE": "dev", "VETTING_REQUIRED": "0"}.items():
             old = os.environ.get(key)
             os.environ[key] = value
             self.addCleanup(lambda k=key, o=old: os.environ.pop(k) if o is None else os.environ.__setitem__(k, o))
