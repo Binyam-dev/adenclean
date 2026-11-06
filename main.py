@@ -26,7 +26,11 @@ RATE_LIMIT_WINDOW_SECONDS = 15 * 60
 RATE_LIMIT_MAX_REQUESTS = 10
 ADMIN_RATE_LIMIT_MAX_REQUESTS = 120
 LOGIN_RATE_LIMIT_MAX_REQUESTS = 10
-LOOKUP_RATE_LIMIT_MAX_REQUESTS = 90  # read-only status checks from the app
+# Read-only status checks from the app. The app keeps up to 60 requests (MAX_SAVED in
+# mobile/src/lib/storage.ts) and reuses an answer for 5 minutes (mobile/src/lib/lookup-cache.ts),
+# so one 15-minute window can hold three automatic full-list checks plus a pull-to-refresh.
+APP_MAX_SAVED_REQUESTS = 60
+LOOKUP_RATE_LIMIT_MAX_REQUESTS = 4 * APP_MAX_SAVED_REQUESTS
 RATE_LIMITS = {}
 STORE = None
 RATE_LIMIT_LOCK = threading.Lock()

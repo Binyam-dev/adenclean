@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -228,6 +229,15 @@ class AppCase:
             for _ in range(main.LOOKUP_RATE_LIMIT_MAX_REQUESTS)
         ]
         self.assertIn(429, flood)
+
+    def test_status_allowance_covers_the_apps_saved_list(self):
+        # The app looks up every saved request on its Requests tab; the allowance has to
+        # cover several full lists in one window or normal use hits 429s.
+        storage = (Path(main.ROOT) / "mobile" / "src" / "lib" / "storage.ts").read_text()
+        match = re.search(r"const MAX_SAVED = (\d+);", storage)
+        self.assertIsNotNone(match)
+        self.assertEqual(int(match.group(1)), main.APP_MAX_SAVED_REQUESTS)
+        self.assertGreaterEqual(main.LOOKUP_RATE_LIMIT_MAX_REQUESTS, 3 * main.APP_MAX_SAVED_REQUESTS)
 
     def test_bad_feedback_tokens_are_not_found(self):
         for token in ("short", "A" * 43, None):
