@@ -37,6 +37,21 @@ RATE_LIMIT_LOCK = threading.Lock()
 DEFAULT_PORT = 5000
 
 
+ASSET_TYPES = {"png", "jpg", "jpeg", "svg", "ico", "ttf", "woff", "woff2"}
+
+
+def cache_policy(request_path):
+    """Cache-Control for a response. API replies are never stored. Pages, CSS and JS are
+    revalidated on every use (a 304 when unchanged), so a deploy shows up at once and the
+    browser's back/forward cache still works. Images and fonts, which change rarely, may be
+    reused for a day."""
+    path = urlsplit(request_path).path
+    if path.startswith("/api/"):
+        return "no-store"
+    extension = path.rsplit(".", 1)[-1].lower() if "." in path.rsplit("/", 1)[-1] else ""
+    return "public, max-age=86400" if extension in ASSET_TYPES else "no-cache"
+
+
 def proxy_hops(environ=None):
     """How many reverse proxies sit in front of the app (0 = none, the default)."""
     environ = os.environ if environ is None else environ
@@ -92,7 +107,7 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
     def end_headers(self):
         if proxy_hops():  # served over HTTPS by the proxy
             self.send_header("Strict-Transport-Security", "max-age=31536000")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_policy(self.path))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()
@@ -159,6 +174,12 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path == "/index.html":  # one address per page, so search engines see one copy
+            self.send_response(301)
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if path == "/api/admin/session":
             try:
                 setup_message = self.admin_setup_message()
