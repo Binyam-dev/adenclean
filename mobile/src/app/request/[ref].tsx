@@ -10,7 +10,7 @@ import { Screen } from '@/components/Screen';
 import { Stars } from '@/components/Stars';
 import { Text } from '@/components/Text';
 import { usePalette } from '@/components/use-palette';
-import { ApiError, isGone, lookup, sendIssue, sendReview, type Lookup } from '@/lib/api';
+import { ApiError, isGone, sendIssue, sendReview, statusCache, type Lookup } from '@/lib/api';
 import { SUPPORT_EMAIL, SUPPORT_PHONE_DISPLAY, SUPPORT_PHONE_LINK } from '@/lib/config';
 import { confirmAction } from '@/lib/confirm';
 import { issueCopy, statusCopy } from '@/lib/status';
@@ -41,7 +41,7 @@ export default function RequestDetail() {
   const [issueError, setIssueError] = useState<string | null>(null);
   const [issueBusy, setIssueBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     const item = await getSaved(reference);
     if (!item) {
       setState('missing');
@@ -49,7 +49,7 @@ export default function RequestDetail() {
     }
     setSaved(item);
     try {
-      setInfo(await lookup(item.token));
+      setInfo(await statusCache.get(item.token, force));
       setState('ready');
     } catch (e) {
       setState(isGone(e) ? 'gone' : 'offline');
@@ -64,7 +64,7 @@ export default function RequestDetail() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await load(true);
     setRefreshing(false);
   };
 
@@ -89,6 +89,7 @@ export default function RequestDetail() {
       await sendReview(saved.token, rating, review);
       success();
       setReviewDone(true);
+      statusCache.forget(saved.token);
       setInfo((current) => (current ? { ...current, reviewSubmitted: true } : current));
     } catch (e) {
       setReviewError(e instanceof ApiError ? e.message : "We couldn't send your review. Try again.");
@@ -110,6 +111,7 @@ export default function RequestDetail() {
       await sendIssue(saved.token, issue);
       success();
       setReporting(false);
+      statusCache.forget(saved.token);
       setInfo((current) => (current ? { ...current, issueSubmitted: true, issueStatus: 'open' } : current));
     } catch (e) {
       setIssueError(e instanceof ApiError ? e.message : "We couldn't send your report. Try again.");

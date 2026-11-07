@@ -1,4 +1,5 @@
 import { API_URL } from './config';
+import { LookupCache } from './lookup-cache';
 import { clean, type RequestDraft } from './validation';
 
 export class ApiError extends Error {
@@ -114,6 +115,9 @@ export async function sendIssue(token: string, message: string, fetcher?: typeof
     fetcher,
   );
 }
+
+/** Shared status answers for the app's screens, so moving between them doesn't re-check every request. */
+export const statusCache = new LookupCache((token) => lookup(token));
 
 /** True when the server no longer recognises this private link (for example it was removed). */
 export function isGone(error: unknown): boolean {

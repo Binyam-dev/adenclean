@@ -8,7 +8,7 @@ import { Field } from '@/components/Field';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { usePalette } from '@/components/use-palette';
-import { ApiError, isGone, lookup, type Lookup } from '@/lib/api';
+import { ApiError, isGone, lookup, statusCache, type Lookup } from '@/lib/api';
 import { statusCopy } from '@/lib/status';
 import { listSaved, saveRequest, type SavedRequest } from '@/lib/storage';
 import { radius, space } from '@/lib/theme';
@@ -24,15 +24,17 @@ export default function Requests() {
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const load = useCallback(async () => {
+  // force: ask the server for every status (pull-to-refresh). Otherwise recent answers are
+  // reused, so switching tabs or coming back from a request doesn't spend the lookup allowance.
+  const load = useCallback(async (force = false) => {
     const saved = await listSaved();
-    setRows(saved.map((item) => ({ saved: item, info: null, failed: false })));
+    setRows(saved.map((item) => ({ saved: item, info: force ? null : statusCache.peek(item.token), failed: false })));
     // Fetch each status on its own so one slow or failed request doesn't hold up the rest.
     await Promise.all(
       saved.map(async (item) => {
         let next: Pick<Row, 'info' | 'failed'>;
         try {
-          next = { info: await lookup(item.token), failed: false };
+          next = { info: await statusCache.get(item.token, force), failed: false };
         } catch {
           next = { info: null, failed: true };
         }
@@ -51,7 +53,7 @@ export default function Requests() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await load(true);
     setRefreshing(false);
   };
 
@@ -65,6 +67,7 @@ export default function Requests() {
     setAdding(true);
     try {
       const info = await lookup(token);
+      statusCache.remember(token, info);
       await saveRequest({
         reference: `L${token.slice(0, 11).toUpperCase().replace(/[^A-Z0-9]/g, 'X')}`,
         token,
