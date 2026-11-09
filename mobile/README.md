@@ -20,7 +20,7 @@ npx expo start      # then press i, a, or w
 ```
 
 The app reads the server address from `EXPO_PUBLIC_API_URL`. For local work, start the
-server from the repository root (`python main.py`, which uses a local SQLite file) and run
+server from the repository root (`ADENCLEAN_STORAGE=memory python main.py`, which saves nothing) and run
 `EXPO_PUBLIC_API_URL=http://localhost:5000 npx expo start`. An Android emulator reaches
 your computer at `http://10.0.2.2:5000`; a real phone needs your computer's network address.
 

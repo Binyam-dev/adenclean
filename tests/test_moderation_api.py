@@ -381,13 +381,6 @@ class ModerationCase(PaymentsCase):
         return next(u["id"] for u in self.market().t.find("users", {"status": "deleted"}))
 
 
-class SqliteModerationTests(ModerationCase, unittest.TestCase):
-    def make_store(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        return storage.SqliteStore(Path(self.directory.name) / "m.sqlite3")
-
-
 @unittest.skipUnless(HAVE_APPWRITE, "appwrite package not installed")
 class AppwriteModerationTests(ModerationCase, unittest.TestCase):
     def make_store(self):
@@ -397,7 +390,7 @@ class AppwriteModerationTests(ModerationCase, unittest.TestCase):
 def load_tests(loader, tests, pattern):
     own = [n for n in ModerationCase.__dict__ if n.startswith("test_")]
     suite = unittest.TestSuite()
-    for cls in (SqliteModerationTests, AppwriteModerationTests):
+    for cls in (AppwriteModerationTests,):
         suite.addTests(cls(name) for name in own)
     return suite
 

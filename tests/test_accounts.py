@@ -30,9 +30,7 @@ class PasswordTests(unittest.TestCase):
 
 class CreateAdminTests(unittest.TestCase):
     def setUp(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.store = storage.SqliteStore(Path(directory.name) / "a.sqlite3")
+        self.store = storage.open_store({"ADENCLEAN_STORAGE": "memory"})
         self.output = []
 
     def run_cli(self, *argv, passwords=("a good long password",) * 2):

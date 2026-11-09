@@ -338,8 +338,8 @@ def main():
     port = int(os.environ.get("PORT", DEFAULT_PORT))
     server = ThreadingHTTPServer(("0.0.0.0", port), AdenCleanHandler)
     print(f"AdenClean is available on port {port} (storage: {STORE.name}).")
-    if STORE.name == "sqlite":
-        print("WARNING: using local SQLite. Set ADENCLEAN_STORAGE=appwrite before collecting real data.")
+    if STORE.name == "memory":
+        print("WARNING: in-memory storage. Nothing is saved. For local development only.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

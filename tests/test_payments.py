@@ -182,13 +182,6 @@ class GatewaySafetyTests(unittest.TestCase):
             StripeGateway("", environ={})
 
 
-class SqlitePaymentTests(PaymentsCase, unittest.TestCase):
-    def make_store(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        return storage.SqliteStore(Path(self.directory.name) / "p.sqlite3")
-
-
 @unittest.skipUnless(HAVE_APPWRITE, "appwrite package not installed")
 class AppwritePaymentTests(PaymentsCase, unittest.TestCase):
     def make_store(self):
@@ -199,7 +192,7 @@ def load_tests(loader, tests, pattern):
     """Run only the tests defined in this file, not the inherited app and marketplace ones."""
     own = [n for n in PaymentsCase.__dict__ if n.startswith("test_")]
     suite = unittest.TestSuite()
-    for cls in (SqlitePaymentTests, AppwritePaymentTests):
+    for cls in (AppwritePaymentTests,):
         suite.addTests(cls(name) for name in own)
     suite.addTests(loader.loadTestsFromTestCase(GatewaySafetyTests))
     return suite

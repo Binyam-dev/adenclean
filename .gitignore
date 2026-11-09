@@ -1,6 +1,3 @@
-# Local preview data
-/data/
-
 # Python
 __pycache__/
 *.py[cod]
@@ -11,3 +8,4 @@ __pycache__/
 
 # Local backups (contain customer details)
 /backups/
+!.env.example

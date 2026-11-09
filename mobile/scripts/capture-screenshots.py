@@ -75,7 +75,7 @@ class Handler(server.AdenCleanHandler):
 
 
 def start_server():
-    server.STORE = storage.SqliteStore(pathlib.Path(tempfile.mkdtemp()) / "shots.sqlite3")
+    server.STORE = storage.open_store({"ADENCLEAN_STORAGE": "memory"})  # nothing is saved
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd

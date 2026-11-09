@@ -1,41 +1,40 @@
 # AdenClean
 
-AdenClean is a home-cleaning service preview for Silver Spring, Maryland: customer inquiries, cleaner availability submissions, private customer feedback links, and a private admin review area with individual admin accounts.
+AdenClean is a home-cleaning service for Silver Spring, Maryland. This repository holds:
+
+- the **server** (Python standard library, one process): the website, the JSON API and the admin area;
+- the **mobile app** in `mobile/` (Expo, iPhone and Android);
+- the **data layer**: Appwrite Cloud (TablesDB). There is no local database.
+
+Version 1 of the app has no sign-in. A customer sends a cleaning request, checks it with a private link code kept on the phone, and leaves a review or reports an issue after the service. A marketplace (sign-in, offers, payments, vetting) also exists in the code but is switched off; see `docs/DECISIONS.md`.
 
 ## Run it locally
 
 ```bash
 pip install -r requirements.txt
-python main.py          # serves on port 5000
+ADENCLEAN_STORAGE=memory SESSION_SECRET=$(python -c "import secrets; print(secrets.token_hex(32))") python main.py
 ```
 
-Without any settings the app stores data in a local SQLite file (`data/adenclean.sqlite3`) and prints a warning. That mode is for development and tests only. Do not collect real customer or cleaner information with it.
+`ADENCLEAN_STORAGE=memory` keeps everything in memory and saves nothing, which is right for local work. Without it the server expects the Appwrite settings and refuses to start if they are missing. Copy `.env.example` to see every setting; the server reads real environment variables, not the file.
 
-## Production storage: Appwrite
+## Settings
 
-Production data lives in [Appwrite](https://appwrite.io) (TablesDB). Set these as secrets in the host (never commit them):
+Every setting is listed with its purpose in [`.env.example`](.env.example). Secrets live only in the host's environment (Render) and are never committed.
 
-| Setting | Value |
-| --- | --- |
-| `ADENCLEAN_STORAGE` | `appwrite` (the app refuses to start if the settings below are missing) |
-| `APPWRITE_ENDPOINT` | e.g. `https://nyc.cloud.appwrite.io/v1` |
-| `APPWRITE_PROJECT_ID` | your Appwrite project ID |
-| `APPWRITE_API_KEY` | server API key with database, table, column, index and row scopes |
-| `APPWRITE_DATABASE_ID` | optional, defaults to `adenclean` |
-| `SESSION_SECRET` | long random string used to sign admin sessions |
-
-One-time setup:
+## Appwrite setup (once, or after a schema change)
 
 ```bash
-python setup_appwrite.py                    # creates the database, tables, columns and indexes
+python setup_appwrite.py                    # creates the database, tables, columns and indexes; safe to re-run
 python create_admin.py add you@example.com  # prompts for a 12+ character password
 ```
 
-Tables are created with no client permissions, so only the server API key can read or write customer data. Keep that key out of the browser, the repository and chat.
+`setup_appwrite.py` needs a temporary key with database, table, column and index scopes. The running server needs only `rows.read` and `rows.write`. Tables are created with no client permissions, so only the server key can read or write customer data.
+
+Moving data out of an old SQLite file from before the Appwrite move: `python scripts/migrate_sqlite_to_appwrite.py path/to/file.sqlite3 --dry-run`.
 
 ## Admin accounts
 
-Each person signs in at `/admin.html` with their own email and password (stored as salted `scrypt` hashes). There is no shared password.
+Each person signs in at `/admin.html` with their own email and password (salted `scrypt` hashes, 8-hour sessions). There is no shared password.
 
 ```bash
 python create_admin.py add someone@example.com
@@ -44,39 +43,28 @@ python create_admin.py disable someone@example.com   # ends their access immedia
 python create_admin.py enable someone@example.com
 ```
 
-Status changes in the review history record the admin's email.
+## Operations
 
-## Backups
-
-Appwrite's free plan does not include automatic backups. Run `python export_backup.py [folder]` on a schedule and copy the file somewhere other than the machine running the app. Exports contain customer and cleaner details (admin password hashes are left out), so store them privately and delete old copies. `backups/` is git-ignored.
-
-## Deploy the server (Render)
-
-`render.yaml` describes an always-on Render web service. In Render choose New > Blueprint,
-pick this repository, and paste `APPWRITE_API_KEY` (the runtime key with only `rows.read`
-and `rows.write`) when asked. `SESSION_SECRET` is generated for you. The service sets
-`ADENCLEAN_PROXY_HOPS=1` so rate limits count each visitor separately behind Render's
-proxy, and answers `/healthz` for health checks. Then use the service's `https://` address as
-`EXPO_PUBLIC_API_URL` for the mobile app (see `mobile/README.md`).
+Deploying, rolling back, backups, restoring Appwrite and what to do when something breaks are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 ## Mobile app
 
-The iPhone and Android app lives in `mobile/` (Expo). See `mobile/README.md` to run it, build
-it, and submit it to the App Store and Google Play.
+See [`mobile/README.md`](mobile/README.md) to run, build and submit the app, and [`mobile/store/LISTING.md`](mobile/store/LISTING.md) for the store text and privacy answers.
 
 ## Known limits
 
 - Appwrite cannot write a record and its history entry in one transaction. If the second write fails, the record is still saved and the failure is logged.
-- Status changes use a lock inside one app process. Run a single instance; several instances could in rare cases overwrite each other's status change.
-- Marketplace offer acceptance (`marketplace/locks.py`) relies on the same one-process lock to stop a job being booked twice. With more than one instance, double bookings become possible. Move acceptance and the ledger to a store with real transactions before scaling out.
+- Status changes and marketplace bookings rely on a lock inside one server process. Run a single instance.
 - Rate limits are in memory and reset on restart.
 - Admin lists show the newest 100 records per type.
-- The app does not send emails or texts; approval is an internal decision, not a confirmed booking.
-
-## Privacy and beta access
-
-Before real customer data: confirm retention and deletion procedures, keep test submissions out of launch data, and keep the Replit deployment on **Sharing → Invite only** until access controls and support are ready. There is no self-service deletion tool yet; removing a person's records is a manual step in the Appwrite console.
+- The app does not send emails or texts to customers; an approval is an internal decision, not a confirmed booking.
+- There is no self-service deletion tool; removing a person's records is a manual step in the Appwrite console.
 
 ## Checks
 
-`.github/workflows/validate.yml` runs Python, JavaScript and test checks on every push (`python -m unittest discover -s tests -v`). The tests run the whole app against both the local SQLite store and an in-memory stand-in for Appwrite. They do not contact the real Appwrite service.
+```bash
+python -m unittest discover -s tests        # server tests, against in-memory Appwrite tables
+cd mobile && npm ci && npm run typecheck && npm run lint && npm test
+```
+
+`.github/workflows/validate.yml` runs the same checks on every push. The tests never contact the real Appwrite service.

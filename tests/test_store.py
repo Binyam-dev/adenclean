@@ -1,4 +1,4 @@
-"""The same behaviour checks run against both storage backends."""
+"""Storage behaviour checks, run against in-memory Appwrite tables."""
 
 import sys
 import tempfile
@@ -174,13 +174,6 @@ class StoreContract:
         self.assertNotIn("secret", str(exported))
 
 
-class SqliteStoreTests(StoreContract, unittest.TestCase):
-    def make_store(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        return storage.SqliteStore(Path(self.directory.name) / "t.sqlite3")
-
-
 @unittest.skipUnless(HAVE_APPWRITE, "appwrite package not installed")
 class AppwriteStoreTests(StoreContract, unittest.TestCase):
     def make_store(self):
@@ -204,10 +197,23 @@ class AppwriteStoreTests(StoreContract, unittest.TestCase):
 
 
 class OpenStoreTests(unittest.TestCase):
-    def test_defaults_to_sqlite(self):
-        with tempfile.TemporaryDirectory() as directory:
-            opened = storage.open_store({}, sqlite_path=Path(directory) / "x.sqlite3")
-            self.assertEqual(opened.name, "sqlite")
+    def test_defaults_to_appwrite_and_never_to_a_local_store(self):
+        with self.assertRaises(RuntimeError) as raised:
+            storage.open_store({})
+        self.assertIn("APPWRITE_API_KEY", str(raised.exception))
+
+    @unittest.skipUnless(HAVE_APPWRITE, "appwrite package not installed")
+    def test_memory_mode_is_for_local_use_and_refused_on_render(self):
+        opened = storage.open_store({"ADENCLEAN_STORAGE": "memory"})
+        self.assertEqual(opened.name, "memory")
+        opened.add_request(request_row(), history("requests", "REQ000000001"))
+        self.assertEqual(opened.get_status("requests", "REQ000000001"), "pending")
+        with self.assertRaises(RuntimeError):
+            storage.open_store({"ADENCLEAN_STORAGE": "memory", "RENDER": "true"})
+
+    def test_sqlite_mode_no_longer_exists(self):
+        with self.assertRaises(RuntimeError):
+            storage.open_store({"ADENCLEAN_STORAGE": "sqlite"})
 
     def test_appwrite_mode_refuses_to_start_without_settings(self):
         with self.assertRaises(RuntimeError) as raised:

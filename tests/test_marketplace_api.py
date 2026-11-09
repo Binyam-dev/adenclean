@@ -181,13 +181,6 @@ class MarketplaceCase(AppCase):
         self.assertEqual(mailer.DEV_OUTBOX, [])
 
 
-class SqliteMarketplaceTests(MarketplaceCase, unittest.TestCase):
-    def make_store(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        return storage.SqliteStore(Path(self.directory.name) / "m.sqlite3")
-
-
 @unittest.skipUnless(HAVE_APPWRITE, "appwrite package not installed")
 class AppwriteMarketplaceTests(MarketplaceCase, unittest.TestCase):
     def make_store(self):

@@ -1,89 +1,9 @@
-"""Marketplace persistence: four generic operations per backend, domain methods on top.
-
-Both adapters raise store.NotFound / store.Conflict / store.StoreError like the main store.
+"""Marketplace persistence: four generic row operations on Appwrite tables, with domain
+methods on top. Raises store.NotFound / store.Conflict / store.StoreError like the main store.
 """
 
-import sqlite3
-from contextlib import closing
-
-import store as base
-
-from .schema import INTEGER, MARKETPLACE_SCHEMA
 
 LIST_CAP = 200
-
-
-class SqliteTables:
-    """Generic CRUD over the marketplace tables in the existing SQLite file."""
-
-    def __init__(self, sqlite_store):
-        self._connect = sqlite_store._connect
-        statements = []
-        for table, spec in MARKETPLACE_SCHEMA.items():
-            cols = ", ".join(
-                f"{key} {'INTEGER' if kind == INTEGER else 'TEXT'}{' NOT NULL' if required else ''}"
-                for key, kind, _size, required in spec["columns"]
-            )
-            statements.append(f"CREATE TABLE IF NOT EXISTS {table} (id TEXT PRIMARY KEY, {cols});")
-            for name, kind, columns in spec["indexes"]:
-                unique = "UNIQUE " if kind == "unique" else ""
-                statements.append(
-                    f"CREATE {unique}INDEX IF NOT EXISTS {table}_{name} ON {table}({', '.join(columns)});"
-                )
-        try:
-            with closing(self._connect()) as connection, connection:
-                connection.executescript("\n".join(statements))
-        except sqlite3.Error as error:
-            raise base.StoreError("Could not prepare marketplace tables.") from error
-
-    def insert(self, table, row):
-        keys = list(row)
-        try:
-            with closing(self._connect()) as connection, connection:
-                connection.execute(
-                    f"INSERT INTO {table} ({', '.join(keys)}) VALUES ({', '.join('?' for _ in keys)})",
-                    tuple(row[k] for k in keys),
-                )
-        except sqlite3.IntegrityError as error:
-            raise base.Conflict("That record already exists.") from error
-        except sqlite3.Error as error:
-            raise base.StoreError("Database write failed.") from error
-
-    def get(self, table, row_id):
-        rows = self.find(table, {"id": row_id}, limit=1)
-        if not rows:
-            raise base.NotFound("That record could not be found.")
-        return rows[0]
-
-    def find(self, table, filters, order_desc=None, limit=LIST_CAP):
-        where, params = [], []
-        for key, value in filters.items():
-            values = list(value) if isinstance(value, (list, tuple, set)) else [value]
-            where.append(f"{key} IN ({', '.join('?' for _ in values)})")
-            params.extend(values)
-        sql = f"SELECT * FROM {table}" + (f" WHERE {' AND '.join(where)}" if where else "")
-        if order_desc:
-            sql += f" ORDER BY {order_desc} DESC"
-        sql += f" LIMIT {int(limit)}"
-        try:
-            with closing(self._connect()) as connection:
-                return [dict(row) for row in connection.execute(sql, params)]
-        except sqlite3.Error as error:
-            raise base.StoreError("Database read failed.") from error
-
-    def update(self, table, row_id, fields):
-        try:
-            with closing(self._connect()) as connection, connection:
-                cursor = connection.execute(
-                    f"UPDATE {table} SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
-                    (*fields.values(), row_id),
-                )
-                if cursor.rowcount == 0:
-                    raise base.NotFound("That record could not be found.")
-        except sqlite3.IntegrityError as error:
-            raise base.Conflict("That record already exists.") from error
-        except sqlite3.Error as error:
-            raise base.StoreError("Database write failed.") from error
 
 
 class AppwriteTables:
@@ -114,11 +34,7 @@ class AppwriteTables:
 
 
 def tables_for(main_store):
-    if main_store.name == "sqlite":
-        return SqliteTables(main_store)
-    if main_store.name == "appwrite":
-        return AppwriteTables(main_store)
-    raise RuntimeError(f"No marketplace adapter for {main_store.name}")
+    return AppwriteTables(main_store)
 
 
 class MarketplaceStore:
