@@ -13,9 +13,9 @@ Scope reminder: version 1 is the three customer flows with no sign-in. A marketp
 | # | Criterion | Status | Evidence |
 | --- | --- | --- | --- |
 | 1 | Zero open P0 or P1 items; P2 listed | **Met in code; two P0 and P1 items are owner actions** | `docs/MVP_BACKLOG.md`. Open P0/P1: Render Starter plan (billing), merge to deploy. P2 listed. |
-| 2 | Clean install, typecheck, lint and all tests pass from a fresh clone | **Met** | Cloned `mvp-readiness` from GitHub at `531412c` into a new folder with a new virtualenv. Server: `Ran 179 tests ... OK`. Mobile: `npm ci` (818 packages), typecheck exit 0, lint exit 0 (0 errors, 0 warnings), `# tests 67 # pass 67 # fail 0`. CI runs the same, plus lint, JS syntax and Android and iOS bundling. |
+| 2 | Clean install, typecheck, lint and all tests pass from a fresh clone | **Met** | Cloned `mvp-readiness` from GitHub at `531412c` into a new folder with a new virtualenv. Server: `Ran 179 tests ... OK`. Mobile: `npm ci` (818 packages), typecheck exit 0, lint exit 0 (0 errors, 0 warnings), `# tests 67 # pass 67 # fail 0`. CI runs the same, plus lint, JS syntax and Android and iOS bundling, and was green (5 of 5 checks) on the final commit of PR #8. |
 | 3 | Three customer flows and the admin flow work end to end against the deployed server and live Appwrite | **Customer flows met on production; admin flow met locally, not on production** | See "End-to-end runs". The admin flow on production needs an admin login, which only the owner has. |
-| 4 | EAS production builds for iOS and Android complete | **iOS met; Android see below** | iOS build 8 finished. Android build 3: see "EAS builds". |
+| 4 | EAS production builds for iOS and Android complete | **Met** | iOS build 8 and Android build 3 (an `.aab` for Play) both finished. See "EAS builds". |
 | 5 | No secrets in the repo or history; no SQLite, Supabase or Replit leftovers | **Met** | Scan of 57 commits, all branches, plus unreachable objects: no real secret (`docs/SECURITY_REVIEW.md`). This branch's added lines: 0 secret-pattern hits. Supabase: 0 references. Replit: files removed. SQLite: backend removed; the words remain only in the migration script and its test, a test that asserts the backend is gone, and one README line pointing at the script. A test fails if they appear anywhere else. |
 | 6 | Store checklist complete, every asset and answer ready to paste | **Met** | `mobile/store/LISTING.md` (all text, privacy and Data safety answers, review notes), `docs/STORE_REQUIREMENTS.md` (current rules with sources), screenshots in `mobile/store/screenshots/` (iPhone 1206x2622 and 1320x2868, Android 1080x2160), icon and feature graphic in `mobile/store/`. |
 
@@ -87,7 +87,7 @@ It writes one more test request named "SMOKE TEST - ignore". Cancel both test re
 | Platform | Build | Result |
 | --- | --- | --- |
 | iOS production | 8 | FINISHED. https://expo.dev/accounts/binyam4u/projects/adenclean/builds/0c57765f-85bd-4b18-a8d8-2f481938fd4b |
-| Android production | 3 | ANDROID_STATUS_PLACEHOLDER https://expo.dev/accounts/binyam4u/projects/adenclean/builds/e0df3cce-73a6-49b8-98a0-3ffe4d483193 |
+| Android production | 3 | FINISHED (an `.aab` app bundle, the format Google Play requires). https://expo.dev/accounts/binyam4u/projects/adenclean/builds/e0df3cce-73a6-49b8-98a0-3ffe4d483193 |
 
 Credentials for both already existed on EAS, so nothing stopped at the credential step.
 
