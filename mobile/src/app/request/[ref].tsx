@@ -166,7 +166,7 @@ export default function RequestDetail() {
 
       {sent === '1' ? (
         <Notice kind="success" title="Request sent">
-          AdenClean has it. This isn't a confirmed booking, and you can check its status here at any time.
+          AdenClean has it. This isn&apos;t a confirmed booking, and you can check its status here at any time.
         </Notice>
       ) : null}
 
@@ -222,7 +222,7 @@ export default function RequestDetail() {
             ) : (
               <>
                 <Text variant="small" tone="soft">
-                  AdenClean reads reviews privately. They aren't posted publicly.
+                  AdenClean reads reviews privately. They aren&apos;t posted publicly.
                 </Text>
                 <Stars value={rating} onChange={setRating} />
                 <Field

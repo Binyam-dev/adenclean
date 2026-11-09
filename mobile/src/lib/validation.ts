@@ -67,7 +67,6 @@ export function clean(value: string, allowNewlines = false): string {
 }
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
-// eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000B-\u001F]/;
 
 export function checkName(value: string): string | null {

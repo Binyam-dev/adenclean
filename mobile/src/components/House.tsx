@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 
@@ -29,19 +29,17 @@ export function House({ lit, size = 200, introduce = false, tone = 'plain' }: Pr
   const p = usePalette();
   const outline = tone === 'hero' ? p.onHero : p.ink;
   const unlit = tone === 'hero' ? 'rgba(243,241,232,0.10)' : p.surfaceDeep;
-  const values = useRef(WINDOWS.map(() => new Animated.Value(introduce ? 0 : 1))).current;
-  const reduceMotion = useRef(false);
+  const [values] = useState(() => WINDOWS.map(() => new Animated.Value(introduce ? 0 : 1)));
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      reduceMotion.current = value;
-    });
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
   }, []);
 
   useEffect(() => {
     const animations = values.map((value, index) => {
       const target = lit[index] ? 1 : 0;
-      if (reduceMotion.current) {
+      if (reduceMotion) {
         value.setValue(target);
         return null;
       }
@@ -55,7 +53,7 @@ export function House({ lit, size = 200, introduce = false, tone = 'plain' }: Pr
     });
     animations.forEach((animation) => animation?.start());
     return () => animations.forEach((animation) => animation?.stop());
-  }, [lit, introduce, values]);
+  }, [lit, introduce, values, reduceMotion]);
 
   const litCount = lit.filter(Boolean).length;
   const height = (size * VIEW_H) / VIEW_W;
