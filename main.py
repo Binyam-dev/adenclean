@@ -356,7 +356,7 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
                 self.send_storage_error("The feedback could not be saved. Please try again.")
             return
 
-        if path in {"/api/admin/session", "/api/admin/logout", "/api/admin/records"}:
+        if path in {"/api/admin/session", "/api/admin/logout", "/api/admin/records", "/api/admin/assignment"}:
             try:
                 if path == "/api/admin/session":
                     self.enforce_rate_limit(
@@ -375,7 +375,10 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
                         limit=ADMIN_RATE_LIMIT_MAX_REQUESTS,
                         message="Too many changes in a short time. Please wait a moment.",
                     )
-                    self.update_admin_record()
+                    if path == "/api/admin/assignment":
+                        self.update_admin_assignment()
+                    else:
+                        self.update_admin_record()
             except ApiError as error:
                 self.send_json(error.status, {"ok": False, "error": error.message})
             except StoreError:

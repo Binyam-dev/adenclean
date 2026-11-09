@@ -29,6 +29,7 @@ LIST_FIELDS = {
     "requests": (
         "id", "created_at", "full_name", "email", "area", "service_type",
         "preferred_date", "preferred_time", "notes", "status", "status_updated_at",
+        "assigned_to",
     ),
     "availability": (
         "id", "created_at", "full_name", "email", "area", "service_types",
@@ -64,6 +65,8 @@ APPWRITE_SCHEMA = {
             ("status", VARCHAR, 20, True),
             ("status_updated_at", VARCHAR, 40, True),
             ("feedback_token_hash", VARCHAR, 64, True),
+            # Who at AdenClean (or which cleaner) is handling this request. Free text, set by an admin.
+            ("assigned_to", VARCHAR, 100, False),
         ],
         "indexes": [
             ("uniq_feedback_token", "unique", ["feedback_token_hash"]),
@@ -176,7 +179,7 @@ def _project(row, fields):
 
 
 def _blank_none(record):
-    for key in ("notes", "preferred_time", "area"):
+    for key in ("notes", "preferred_time", "area", "assigned_to"):
         if key in record and record[key] is None:
             record[key] = ""
     return record
@@ -329,6 +332,18 @@ class AppwriteStore:
                 table_id=table,
                 row_id=record_id,
                 data={"status": new_status, "status_updated_at": changed_at},
+            )
+        self._write_history(history)
+
+    def set_assignment(self, request_id, assigned_to, history):
+        """Record who is handling a request. Does not change its status."""
+        with self._lock:
+            self._call(self.db.get_row, table_id="customer_requests", row_id=request_id)  # NotFound if gone
+            self._call(
+                self.db.update_row,
+                table_id="customer_requests",
+                row_id=request_id,
+                data={"assigned_to": assigned_to},
             )
         self._write_history(history)
 

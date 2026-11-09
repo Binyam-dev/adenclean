@@ -171,6 +171,35 @@ class AdminRoutes:
             },
         )
 
+    def update_admin_assignment(self):
+        """Set or clear who is handling a customer request. The status is left alone."""
+        payload = self.read_json()
+        record_id = clean_text(payload.get("id"), "Record reference", 32).upper()
+        assigned_to = clean_text(payload.get("assignedTo", ""), "Assigned to", 100, required=False)
+        try:
+            current_status = self.store.get_status("requests", record_id)
+        except NotFound as error:
+            raise ApiError(404, "That record could not be found.") from error
+        changed_at = datetime.now(timezone.utc).isoformat()
+        try:
+            self.store.set_assignment(
+                record_id,
+                assigned_to,
+                {
+                    "record_type": "requests",
+                    "record_id": record_id,
+                    "old_status": current_status,
+                    "new_status": current_status,
+                    "note": f"Assigned to {assigned_to}" if assigned_to else "Assignment cleared",
+                    "actor": self.admin["email"],
+                    "created_at": changed_at,
+                },
+            )
+        except NotFound as error:
+            raise ApiError(404, "That record could not be found.") from error
+        self.send_json(200, {"ok": True, "reference": record_id, "assignedTo": assigned_to,
+                             "message": "Assignment saved."})
+
     def update_admin_record(self):
         payload = self.read_json()
         record_type = clean_text(payload.get("type"), "Record type", 20)
