@@ -149,7 +149,12 @@ APPWRITE_SCHEMA = {
         "indexes": [("uniq_email", "unique", ["email"])],
     },
 }
+from marketplace.schema import MARKETPLACE_SCHEMA  # noqa: E402
+
+APPWRITE_SCHEMA.update(MARKETPLACE_SCHEMA)
 # Tables included in backup exports. Admin password hashes are deliberately left out.
+# Marketplace tables join this list once production has them (setup_appwrite.py), so the
+# nightly backup never fails on a table that does not exist yet.
 EXPORT_TABLES = (
     "customer_requests", "cleaner_availability", "status_history",
     "customer_reviews", "service_issues",

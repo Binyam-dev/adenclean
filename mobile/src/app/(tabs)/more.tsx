@@ -9,6 +9,11 @@ import { Text } from '@/components/Text';
 import { usePalette } from '@/components/use-palette';
 import { PRIVACY_URL, SERVICE_AREA, SUPPORT_EMAIL, SUPPORT_PHONE_DISPLAY, SUPPORT_PHONE_LINK, TERMS_URL } from '@/lib/config';
 import { confirmAction } from '@/lib/confirm';
+import { router } from 'expo-router';
+
+import { ApiError } from '@/lib/api';
+import { MARKET_ENABLED } from '@/lib/market';
+import { signOut, useSession } from '@/lib/session';
 import { clearAll } from '@/lib/storage';
 import { radius, space } from '@/lib/theme';
 
@@ -34,7 +39,27 @@ function Row({ title, detail, onPress, tone = 'ink' }: { title: string; detail?:
 export default function More() {
   const p = usePalette();
   const [done, setDone] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const { user, client } = useSession();
   const version = Constants.expoConfig?.version ?? '1.0.0';
+
+  const deleteAccount = async () => {
+    const yes = await confirmAction({
+      title: 'Delete your account?',
+      message:
+        'Your account, profile and open jobs and offers are removed. Booked jobs, payment records and safety reports are kept as the law requires. This cannot be undone.',
+      confirmLabel: 'Delete account',
+      cancelLabel: 'Keep account',
+      destructive: true,
+    });
+    if (!yes) return;
+    try {
+      await client.deleteAccount();
+      await signOut();
+    } catch (e) {
+      setAccountError(e instanceof ApiError ? e.message : 'Could not delete the account. Try again.');
+    }
+  };
 
   const removeSaved = async () => {
     const yes = await confirmAction({
@@ -62,6 +87,26 @@ export default function More() {
           AdenClean brings households and cleaning services together in a way that feels dependable, personal and easy to understand. Now serving {SERVICE_AREA}.
         </Text>
       </View>
+
+      {MARKET_ENABLED ? (
+        <View style={[styles.group, { backgroundColor: p.surface, borderColor: p.line }]}>
+          <Text variant="heading">Your account</Text>
+          {user ? (
+            <>
+              <Text>{user.displayName}</Text>
+              <Text tone="soft">{user.email}</Text>
+              <Rule />
+              <Row title="Sign out" onPress={() => void signOut()} />
+              <Rule />
+              <Row title="Delete my account" detail="Removes your account and open jobs from AdenClean" tone="error"
+                onPress={() => void deleteAccount()} />
+            </>
+          ) : (
+            <Row title="Sign in or create an account" detail="Hire cleaners or find cleaning work" onPress={() => router.push('/sign-in')} />
+          )}
+          {accountError ? <Notice kind="error">{accountError}</Notice> : null}
+        </View>
+      ) : null}
 
       <View style={[styles.group, { backgroundColor: p.surface, borderColor: p.line }]}>
         <Text variant="heading">Get in touch</Text>

@@ -68,6 +68,7 @@ it, and submit it to the App Store and Google Play.
 
 - Appwrite cannot write a record and its history entry in one transaction. If the second write fails, the record is still saved and the failure is logged.
 - Status changes use a lock inside one app process. Run a single instance; several instances could in rare cases overwrite each other's status change.
+- Marketplace offer acceptance (`marketplace/locks.py`) relies on the same one-process lock to stop a job being booked twice. With more than one instance, double bookings become possible. Move acceptance and the ledger to a store with real transactions before scaling out.
 - Rate limits are in memory and reset on restart.
 - Admin lists show the newest 100 records per type.
 - The app does not send emails or texts; approval is an internal decision, not a confirmed booking.

@@ -38,9 +38,14 @@ class SeoTests(unittest.TestCase):
         cls.server.shutdown()
         cls.server.server_close()
 
-    def get(self, path):
+    def get(self, path, method="GET"):
+        # Large bodies are fetched with HEAD (headers only) on purpose: on the Windows dev
+        # machine, downloading 25-45 KB files over loopback sometimes stalls ~20 s and is
+        # reset (antivirus inspection; the server has already logged a 200). Headers are all
+        # these tests need for big files.
+        request = urllib.request.Request(self.base + path, method=method)
         try:
-            with self.opener.open(self.base + path, timeout=10) as response:
+            with self.opener.open(request, timeout=30) as response:
                 return response.status, response.headers, response.read()
         except urllib.error.HTTPError as error:
             return error.code, error.headers, error.read()
@@ -95,13 +100,13 @@ class SeoTests(unittest.TestCase):
 
     def test_share_image_exists(self):
         self.assertTrue((STATIC / "og-image.png").is_file())
-        status, headers, body = self.get("/og-image.png")
+        status, headers, body = self.get("/og-image.png", "HEAD")
         self.assertEqual((status, headers["Content-Type"]), (200, "image/png"))
 
     def test_index_html_redirects_to_the_root(self):
         status, headers, _ = self.get("/index.html")
         self.assertEqual((status, headers["Location"]), (301, "/"))
-        self.assertEqual(self.get("/")[0], 200)
+        self.assertEqual(self.get("/", "HEAD")[0], 200)
 
     def test_cache_policy(self):
         self.assertEqual(main.cache_policy("/api/service-requests"), "no-store")
@@ -111,14 +116,14 @@ class SeoTests(unittest.TestCase):
         self.assertEqual(main.cache_policy("/app.js"), "no-cache")
         self.assertEqual(main.cache_policy("/og-image.png"), "public, max-age=86400")
         self.assertEqual(main.cache_policy("/favicon.svg"), "public, max-age=86400")
-        self.assertEqual(self.get("/")[1]["Cache-Control"], "no-cache")
+        self.assertEqual(self.get("/", "HEAD")[1]["Cache-Control"], "no-cache")
         self.assertEqual(self.get("/api/admin/session")[1]["Cache-Control"], "no-store")
 
     def test_pages_can_be_revalidated_with_a_304(self):
-        status, headers, _ = self.get("/styles.css")
-        request = urllib.request.Request(self.base + "/styles.css", headers={"If-Modified-Since": headers["Last-Modified"]})
+        status, headers, _ = self.get("/robots.txt")
+        request = urllib.request.Request(self.base + "/robots.txt", headers={"If-Modified-Since": headers["Last-Modified"]})
         with self.assertRaises(urllib.error.HTTPError) as caught:
-            self.opener.open(request, timeout=10)
+            self.opener.open(request, timeout=30)
         self.assertEqual(caught.exception.code, 304)
 
 

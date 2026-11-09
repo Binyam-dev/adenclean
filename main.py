@@ -1,6 +1,7 @@
 """AdenClean web server: static site, JSON API and request plumbing.
 
-Endpoint logic lives in submissions.py (public forms) and admin_routes.py (admin);
+Endpoint logic lives in submissions.py (public forms), admin_routes.py (admin) and
+api_v1.py (marketplace, off unless MARKETPLACE_ENABLED=1);
 input validation lives in validation.py.
 """
 
@@ -14,6 +15,7 @@ from urllib.parse import urlsplit
 
 import store as storage
 from admin_routes import AdminRoutes
+from api_v1 import MarketplaceRoutes
 from store import StoreError
 from submissions import SubmissionRoutes
 from validation import ApiError
@@ -76,7 +78,7 @@ def client_address(socket_address, forwarded_for, hops):
     return entries[-hops][:64]
 
 
-class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
+class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
     # Drop clients that stall mid-request instead of holding a thread forever.
     timeout = 30
 
@@ -110,7 +112,18 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", cache_policy(self.path))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        dev_origin = os.environ.get("ADENCLEAN_DEV_CORS_ORIGIN", "")
+        # Local development only (Expo web on another port). Never set this in production.
+        if dev_origin.startswith("http://localhost:") and self.headers.get("Origin") == dev_origin:
+            self.send_header("Access-Control-Allow-Origin", dev_origin)
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204 if os.environ.get("ADENCLEAN_DEV_CORS_ORIGIN") else 405)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def send_json(self, status, payload, headers=None):
         self.discard_unread_body()
@@ -172,6 +185,12 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
     def send_storage_error(self, message):
         self.send_json(500, {"ok": False, "error": message})
 
+    def admin_vetting_alias(self, method):
+        """The admin session cookie is only sent under /api/admin, so the vetting review
+        endpoints are reachable there too. Same handlers, same admin-session check."""
+        self.path = "/api/v1/admin/vetting" + self.path[len("/api/admin/vetting"):]
+        self.handle_v1(method)
+
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == "/index.html":  # one address per page, so search engines see one copy
@@ -179,6 +198,12 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
             self.send_header("Location", "/")
             self.send_header("Content-Length", "0")
             self.end_headers()
+            return
+        if path.startswith("/api/v1/"):
+            self.handle_v1("GET")
+            return
+        if path.startswith("/api/admin/vetting"):
+            self.admin_vetting_alias("GET")
             return
         if path == "/api/admin/session":
             try:
@@ -229,6 +254,12 @@ class AdenCleanHandler(SubmissionRoutes, AdminRoutes, SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if path.startswith("/api/v1/"):
+            self.handle_v1("POST")
+            return
+        if path.startswith("/api/admin/vetting"):
+            self.admin_vetting_alias("POST")
+            return
         if path == "/api/customer-feedback":
             try:
                 payload = self.read_json()
