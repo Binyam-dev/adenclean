@@ -146,6 +146,22 @@ class HardeningTests(unittest.TestCase):
                 self.assertNotRegex(text, r"setAttribute\(\s*['\"]style['\"]")
                 self.assertNotIn("eval(", text)
 
+    def test_folders_are_never_listed_and_paths_cannot_escape_the_site(self):
+        folder = ROOT / "static" / "probe-folder"
+        folder.mkdir(exist_ok=True)
+        (folder / "inside.txt").write_text("x", encoding="utf-8")
+        self.addCleanup(lambda: (folder / "inside.txt").unlink() or folder.rmdir())
+        for path in ("/probe-folder/", "/probe-folder"):
+            with self.subTest(path=path):
+                status, _, body = self.open(path)
+                self.assertNotIn(b"inside.txt", body)
+                self.assertIn(status, (301, 404))
+        self.assertEqual(self.open("/probe-folder/inside.txt")[0], 200)  # a file you name still works
+        for path in ("/../main.py", "/%2e%2e/main.py", "/..%2fmain.py", "/static/../main.py"):
+            with self.subTest(path=path):
+                status, _, body = self.open(path)
+                self.assertNotIn(b"AdenCleanHandler", body)
+
     # -- logs -----------------------------------------------------------------------------
 
     def test_logs_are_json_and_never_hold_query_strings_bodies_or_codes(self):

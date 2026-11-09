@@ -117,6 +117,11 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
         if 0 < length <= MAX_BODY_BYTES:
             self.rfile.read(length)
 
+    def list_directory(self, path):
+        """Never show a folder's contents; a folder is just not found."""
+        self.send_error(404, "Not found")
+        return None
+
     def end_headers(self):
         if proxy_hops():  # served over HTTPS by the proxy
             self.send_header("Strict-Transport-Security", "max-age=31536000")
