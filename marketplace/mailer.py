@@ -12,10 +12,39 @@ import urllib.request
 
 log = logging.getLogger("adenclean.mailer")
 DEV_OUTBOX = []  # (email, code) pairs, dev mode only
+DEV_ALERTS = []  # (to, subject, body), dev mode only
+DEFAULT_ALERT_TO = "applications@adeneats.com"
 
 
 class MailError(RuntimeError):
     pass
+
+
+def send_alert(subject, body, environ=None):
+    """Tell AdenClean staff something needs attention. Goes only to the support address
+    (ALERT_EMAIL, default applications@adeneats.com), never to a customer or cleaner.
+    Never raises: a failed alert must not fail the request that caused it.
+    """
+    environ = environ or os.environ
+    to = (environ.get("ALERT_EMAIL") or DEFAULT_ALERT_TO).strip()
+    current = mode(environ)
+    try:
+        if current == "dev":
+            DEV_ALERTS.append((to, subject, body))
+            return True
+        if current == "resend":
+            key, sender = environ.get("RESEND_API_KEY"), environ.get("MAIL_FROM")
+            if not key or not sender:
+                return False
+            request = urllib.request.Request(
+                "https://api.resend.com/emails", method="POST",
+                data=json.dumps({"from": sender, "to": [to], "subject": subject, "text": body}).encode(),
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status < 300
+    except OSError as error:
+        log.error("Alert email failed (%s)", type(error).__name__)  # never log the key
+    return False
 
 
 def mode(environ=None):

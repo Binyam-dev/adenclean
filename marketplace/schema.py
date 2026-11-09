@@ -173,4 +173,43 @@ MARKETPLACE_SCHEMA = {
         ],
         "indexes": [("idx_status", "key", ["status"]), ("idx_candidate", "key", ["candidate_ref"])],
     },
+    # -- Phase 3: moderation (Apple guideline 1.2). Reports keep a snapshot of the text, because
+    # cancelling a job or deleting an account clears the original. No unique index on reports:
+    # open duplicates are merged in code under BOOKING_LOCK.
+    "reports": {
+        "columns": [
+            ("reporter_id", VARCHAR, 36, True),
+            ("target_kind", VARCHAR, 10, True),  # job | offer
+            ("target_id", VARCHAR, 36, True),
+            ("target_user_id", VARCHAR, 36, True),  # the author of the reported content
+            ("reason", VARCHAR, 20, True),
+            ("detail", VARCHAR, 500, False),
+            ("snapshot_text", TEXT, None, False),
+            ("snapshot_name", VARCHAR, 80, False),
+            ("snapshot_status", VARCHAR, 30, False),
+            ("status", VARCHAR, 20, True),  # open | dismissed | actioned
+            ("action", VARCHAR, 30, False),
+            ("created_at", VARCHAR, 40, True),
+            ("resolved_at", VARCHAR, 40, False),
+            ("resolved_by", VARCHAR, 254, False),
+        ],
+        "indexes": [
+            ("idx_status", "key", ["status"]),
+            ("idx_reporter", "key", ["reporter_id"]),
+            ("idx_target_user", "key", ["target_user_id"]),
+        ],
+    },
+    # Unblocking sets active to 0 (rows are never deleted), so the unique pair index holds.
+    "blocks": {
+        "columns": [
+            ("blocker_id", VARCHAR, 36, True),
+            ("blocked_id", VARCHAR, 36, True),
+            ("active", INTEGER, None, True),
+            ("created_at", VARCHAR, 40, True),
+        ],
+        "indexes": [
+            ("uniq_pair", "unique", ["blocker_id", "blocked_id"]),
+            ("idx_blocked", "key", ["blocked_id"]),
+        ],
+    },
 }

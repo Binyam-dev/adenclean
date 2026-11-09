@@ -15,7 +15,7 @@ CODE_TTL = timedelta(minutes=10)
 MAX_ATTEMPTS = 5
 MAX_CODES_PER_HOUR = 5
 SESSION_SECONDS = 30 * 24 * 60 * 60  # mobile sessions last 30 days
-TERMS_VERSION = "2026-11-04"
+TERMS_VERSION = "2026-11-09"  # adds the content-conduct clause (new sign-ups record this version)
 PRIVACY_VERSION = "2026-11-04"
 
 
@@ -127,14 +127,40 @@ def delete_account(store, user, now=None):
         "status": "deleted", "home_zip": None, "language_codes": None, "roles": "",
         "deleted_at": now.isoformat(),
     })
+    cancelled = close_open_items(store, user["id"], now)
+    store.deactivate_blocks_for(user["id"])  # their blocks end with the account
+    store.clear_report_details(user["id"])  # free text they wrote in their own reports
+    return cancelled
+
+
+def close_open_items(store, user_id, now):
+    """Cancel a person's open jobs (as customer) and withdraw their open offers (as cleaner).
+
+    Bookings are never touched here: money and safety flows finish on their own.
+    Idempotent. The caller holds BOOKING_LOCK. Returns how many jobs were cancelled.
+    """
     cancelled = 0
-    for job in store.jobs_for_customer(user["id"]):
+    for job in store.jobs_for_customer(user_id):
         if job["status"] in ("draft", "open", "expired"):
             store.update_job(job["id"], {"status": "cancelled", "notes": None,
                                          "status_updated_at": now.isoformat()})
             cancelled += 1
-    for offer in store.offers_by_cleaner(user["id"]):
+    for offer in store.offers_by_cleaner(user_id):
         if offer["status"] in ("pending", "countered"):
             store.update_offer(offer["id"], {"status": "withdrawn", "message": None,
                                              "updated_at": now.isoformat()})
     return cancelled
+
+
+def suspend(store, user, now=None):
+    """Suspend an active account and close its open jobs and offers. Caller holds BOOKING_LOCK."""
+    if user["status"] != "active":
+        raise AuthError(409, "Only an active account can be suspended.")
+    store.update_user(user["id"], {"status": "suspended"})
+    return close_open_items(store, user["id"], now or _now())
+
+
+def unsuspend(store, user):
+    if user["status"] != "suspended":
+        raise AuthError(409, "This account is not suspended.")
+    store.update_user(user["id"], {"status": "active"})

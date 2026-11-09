@@ -39,6 +39,7 @@ RATE_LIMIT_LOCK = threading.Lock()
 DEFAULT_PORT = 5000
 
 
+ADMIN_ALIASES = ("vetting", "moderation")  # /api/admin/<name> -> /api/v1/admin/<name>
 ASSET_TYPES = {"png", "jpg", "jpeg", "svg", "ico", "ttf", "woff", "woff2"}
 
 
@@ -185,11 +186,16 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
     def send_storage_error(self, message):
         self.send_json(500, {"ok": False, "error": message})
 
-    def admin_vetting_alias(self, method):
-        """The admin session cookie is only sent under /api/admin, so the vetting review
-        endpoints are reachable there too. Same handlers, same admin-session check."""
-        self.path = "/api/v1/admin/vetting" + self.path[len("/api/admin/vetting"):]
-        self.handle_v1(method)
+    def admin_alias(self, path, method):
+        """The admin session cookie is only sent under /api/admin, so these review endpoints
+        are reachable there too: same handlers, same admin-session check. Returns True if handled."""
+        for name in ADMIN_ALIASES:
+            prefix = f"/api/admin/{name}"
+            if path == prefix or path.startswith(prefix + "/"):
+                self.path = f"/api/v1/admin/{name}" + self.path[len(prefix):]
+                self.handle_v1(method)
+                return True
+        return False
 
     def do_GET(self):
         path = urlsplit(self.path).path
@@ -202,8 +208,7 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
         if path.startswith("/api/v1/"):
             self.handle_v1("GET")
             return
-        if path.startswith("/api/admin/vetting"):
-            self.admin_vetting_alias("GET")
+        if self.admin_alias(path, "GET"):
             return
         if path == "/api/admin/session":
             try:
@@ -257,8 +262,7 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
         if path.startswith("/api/v1/"):
             self.handle_v1("POST")
             return
-        if path.startswith("/api/admin/vetting"):
-            self.admin_vetting_alias("POST")
+        if self.admin_alias(path, "POST"):
             return
         if path == "/api/customer-feedback":
             try:

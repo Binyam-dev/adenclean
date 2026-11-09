@@ -11,9 +11,10 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
+from api_v1_moderation import MODERATION_ROUTES, ModerationRoutes
 from api_v1_payments import PAYMENT_ROUTES, PaymentRoutes
 from api_v1_vetting import VETTING_ROUTES, VettingRoutes, vetting_required
-from marketplace import accounts, bookings, jobs, locks, mailer, offers
+from marketplace import accounts, bookings, jobs, locks, mailer, moderation, offers
 from marketplace import config as mconfig
 from marketplace.storage import MarketplaceStore, tables_for
 from store import Conflict, NotFound, StoreError
@@ -75,7 +76,18 @@ ROUTES = [  # (method, pattern, handler name)
 ]
 
 
-class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
+# A suspended person cannot post, offer, accept or browse jobs, but can still read their own
+# jobs and finish a booking already in progress (pay, check in and out, confirm, cancel, tip)
+# and delete their account. Money and safety flows must not strand the other person.
+SUSPENDED_OK = frozenset({
+    "v1_me", "v1_delete_account", "v1_my_jobs", "v1_get_job", "v1_job_offers", "v1_booking", "v1_pay",
+    "v1_check_in", "v1_check_out", "v1_confirm", "v1_cancel_booking", "v1_tip",
+})
+
+
+class MarketplaceRoutes(PaymentRoutes, VettingRoutes, ModerationRoutes):
+    _suspended_ok = False
+
     # -- plumbing --------------------------------------------------------------
 
     @property
@@ -98,9 +110,10 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
         if not enabled():
             self.send_json(404, {"ok": False, "error": "That endpoint was not found."})
             return
-        for route_method, pattern, name in ROUTES + PAYMENT_ROUTES + VETTING_ROUTES:
+        for route_method, pattern, name in ROUTES + PAYMENT_ROUTES + VETTING_ROUTES + MODERATION_ROUTES:
             match = re.fullmatch(pattern, path)
             if match and route_method == method:
+                self._suspended_ok = name in SUSPENDED_OK
                 try:
                     getattr(self, name)(**match.groupdict())
                 except accounts.AuthError as error:
@@ -134,7 +147,11 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
             user = self.market.get_user(user_id)
         except NotFound:
             raise ApiError(401, "Sign in to continue.") from None
-        if user["status"] != "active":
+        if user["status"] == "suspended" and self._suspended_ok:
+            pass
+        elif user["status"] == "suspended":
+            raise ApiError(403, "Your account is suspended. Contact AdenClean for help.")
+        elif user["status"] != "active":
             raise ApiError(401, "Sign in to continue.")
         self.enforce_rate_limit(bucket="v1:" + user_id, limit=300,
                                 message="Too many requests. Please wait a moment.")
@@ -164,17 +181,29 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
         self.enforce_rate_limit(bucket="v1-verify", limit=20)
         payload = self.read_json()
         email = clean_email(payload.get("email"))
+        explicit = clean_text(payload.get("displayName") or "", "Name", 80, required=False)
+        # Checked before the one-time code is used, so a rejected name does not burn the code.
+        # Applied to everyone who sends a name (not only new accounts), so the answer does not
+        # reveal whether an account exists. Stored names are never re-checked.
+        self._check_text(explicit, "your name")
         accounts.check_code(self.market, self._secret(), email, payload.get("code"))
-        name = clean_text(payload.get("displayName") or email.split("@")[0], "Name", 80)
+        name = explicit or email.split("@")[0]
         ip = self.client_address[0]
         user, created = accounts.sign_in(self.market, email, name, payload.get("acceptTerms"), ip)
         token = accounts.make_token(self._secret(), user["id"])
         self.send_json(200, {"ok": True, "token": token, "created": created, "user": self._me(user)})
 
     @staticmethod
+    def _check_text(text, field):
+        """Reject phone numbers, emails, links and abusive words before saving user text."""
+        problem = moderation.check_text(text)
+        if problem:
+            raise ApiError(400, moderation.filter_message(problem, field))
+
+    @staticmethod
     def _me(user):
         return {"id": user["id"], "email": user["email"], "displayName": user["display_name"],
-                "roles": sorted(accounts.roles_of(user))}
+                "roles": sorted(accounts.roles_of(user)), "suspended": user["status"] == "suspended"}
 
     def v1_me(self):
         self.send_json(200, {"ok": True, "user": self._me(self.current_user())})
@@ -205,6 +234,8 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
         date_from, date_to = _date(p.get("dateFrom"), "Start date"), _date(p.get("dateTo"), "End date")
         if date_from < now.date() or date_to < date_from or date_to > date_from + timedelta(days=30):
             raise ApiError(400, "Choose dates from today, at most 30 days apart.")
+        notes = clean_text(p.get("notes", ""), "Notes", 800, required=False, allow_newlines=True) or None
+        self._check_text(notes, "the notes")
         job = {
             "id": uuid.uuid4().hex, "customer_id": user["id"], "status": "open",
             "service_type": service, "zip": zip_code,
@@ -213,7 +244,7 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
             "supplies": supplies, "date_from": date_from.isoformat(), "date_to": date_to.isoformat(),
             "budget_cents": _int(p.get("budgetCents"), "Budget", cfg.min_price_cents,
                                  cfg.max_price_cents, required=False),
-            "notes": clean_text(p.get("notes", ""), "Notes", 800, required=False, allow_newlines=True) or None,
+            "notes": notes,
             "booked_offer_id": None, "price_cents": None, "created_at": now.isoformat(),
             "expires_at": (now + timedelta(hours=cfg.job_expiry_hours)).isoformat(),
             "status_updated_at": now.isoformat(),
@@ -244,7 +275,8 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
         user, now = self.current_user(), _now()
         self._require_cleaner(user)
         rows = [self._expire_if_due(j, now) for j in self.market.open_jobs_in(self.mconf.service_zips)]
-        visible = [j for j in rows if j["status"] == "open" and j["customer_id"] != user["id"]]
+        visible = [j for j in rows if j["status"] == "open" and j["customer_id"] != user["id"]
+                   and not moderation.hidden_between(self.market, user["id"], j["customer_id"], j["id"])]
         self.send_json(200, {"ok": True, "jobs": [self._job_view(j, owner=False) for j in visible]})
 
     def v1_get_job(self, job_id):
@@ -257,6 +289,8 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
         mine = [o for o in self.market.offers_for_job(job_id) if o["cleaner_id"] == user["id"]]
         if job["status"] != "open" and not mine:
             raise NotFound("job")
+        if moderation.hidden_between(self.market, user["id"], job["customer_id"], job["id"]):
+            raise NotFound("job")  # same answer as a job that does not exist
         self.send_json(200, {"ok": True, "job": self._job_view(job, owner=False), "role": "cleaner",
                              "myOffer": self._offer_view(mine[0], False) if mine else None})
 
@@ -290,8 +324,11 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
         job = self.market.get_job(job_id)
         rows = self.market.offers_for_job(job_id)
         if job["customer_id"] == user["id"]:
-            views = [self._offer_view(r, True) for r in rows]
+            views = [self._offer_view(r, True) for r in rows
+                     if not moderation.hidden_between(self.market, user["id"], r["cleaner_id"], job["id"])]
         else:
+            if moderation.hidden_between(self.market, user["id"], job["customer_id"], job["id"]):
+                raise NotFound("job")
             views = [self._offer_view(r, False) for r in rows if r["cleaner_id"] == user["id"]]
         self.send_json(200, {"ok": True, "offers": views})
 
@@ -299,21 +336,28 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
         user, cfg, now = self.current_user(), self.mconf, _now()
         self._require_cleaner(user)
         p = self.read_json()
+        message = clean_text(p.get("message", ""), "Message", 500, required=False) or None
+        self._check_text(message, "your message")
         job = self._expire_if_due(self.market.get_job(job_id), now)
         self.require_payouts_ready(user)
-        offer, flags = offers.make_offer(uuid.uuid4().hex, job, user["id"], p.get("priceCents"), cfg)
-        row = {
-            "id": offer.id, "job_id": job_id, "cleaner_id": user["id"], "price_cents": offer.price_cents,
-            "status": offer.status, "counter_rounds": 0, "awaiting": offer.awaiting,
-            "message": clean_text(p.get("message", ""), "Message", 500, required=False) or None,
-            "flags": ",".join(flags) or None, "created_at": now.isoformat(),
-            "expires_at": (now + timedelta(hours=cfg.offer_expiry_hours)).isoformat(),
-            "updated_at": now.isoformat(),
-        }
-        try:
-            self.market.create_offer(row)
-        except Conflict:
-            raise ApiError(409, "You already sent an offer on this job. Update that one instead.") from None
+        # The block check and the insert run under BOOKING_LOCK, so a block made at the same
+        # moment (which also takes the lock) cannot be missed.
+        with locks.BOOKING_LOCK:
+            if moderation.hidden_between(self.market, user["id"], job["customer_id"], job["id"]):
+                raise NotFound("job")  # same answer as a job that does not exist
+            offer, flags = offers.make_offer(uuid.uuid4().hex, job, user["id"], p.get("priceCents"), cfg)
+            row = {
+                "id": offer.id, "job_id": job_id, "cleaner_id": user["id"], "price_cents": offer.price_cents,
+                "status": offer.status, "counter_rounds": 0, "awaiting": offer.awaiting,
+                "message": message,
+                "flags": ",".join(flags) or None, "created_at": now.isoformat(),
+                "expires_at": (now + timedelta(hours=cfg.offer_expiry_hours)).isoformat(),
+                "updated_at": now.isoformat(),
+            }
+            try:
+                self.market.create_offer(row)
+            except Conflict:
+                raise ApiError(409, "You already sent an offer on this job. Update that one instead.") from None
         self.send_json(201, {"ok": True, "offer": self._offer_view(row, False)})
 
     def _close_other_offers(self, job_id, keep, now):
@@ -363,9 +407,18 @@ class MarketplaceRoutes(PaymentRoutes, VettingRoutes):
             self._close_other_offers(booked["id"], keep=accepted.id, now=now)
             bookings.create_booking(market, booked, accepted, self.mconf, now)
 
+        def still_allowed(job, offer):
+            """Runs inside the lock, after re-reading: a block or suspension made since the
+            request began must stop the booking. The message does not say which."""
+            for person in (job["customer_id"], offer.cleaner_id):
+                if market.get_user(person)["status"] != "active":
+                    raise offers.OfferError("This offer is no longer available.")
+            if moderation.pair_blocked(market, job["customer_id"], offer.cleaner_id):
+                raise offers.OfferError("This offer is no longer available.")
+
         booked, accepted = locks.accept_offer(
             market.get_job, lambda oid: _offer_from_row(market.get_offer(oid)), save,
-            offer_id, user["id"], role)
+            offer_id, user["id"], role, check=still_allowed)
         self.send_json(200, {"ok": True, "job": self._job_view(booked, owner=role == jobs.CUSTOMER),
                              "priceCents": accepted.price_cents})
 

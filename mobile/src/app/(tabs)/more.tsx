@@ -96,6 +96,8 @@ export default function More() {
               <Text>{user.displayName}</Text>
               <Text tone="soft">{user.email}</Text>
               <Rule />
+              <Row title="Blocked people" detail="See who you blocked, or unblock someone" onPress={() => router.push('/blocked')} />
+              <Rule />
               <Row title="Sign out" onPress={() => void signOut()} />
               <Rule />
               <Row title="Delete my account" detail="Removes your account and open jobs from AdenClean" tone="error"
