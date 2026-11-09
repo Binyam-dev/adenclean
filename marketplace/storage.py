@@ -250,6 +250,57 @@ class MarketplaceStore:
     def vetting_queue(self, status):
         return self.t.find("vetting", {"status": status}, order_desc="updated_at")
 
+    # moderation
+    def create_report(self, row):
+        self.t.insert("reports", row)
+
+    def get_report(self, report_id):
+        return self.t.get("reports", report_id)
+
+    def update_report(self, report_id, fields):
+        self.t.update("reports", report_id, fields)
+
+    def reports_by_reporter(self, reporter_id):
+        return self.t.find("reports", {"reporter_id": reporter_id}, order_desc="created_at")
+
+    def reports_with_status(self, status):
+        """Oldest first, so the queue is worked in the order reports arrived."""
+        return sorted(self.t.find("reports", {"status": status}), key=lambda r: r["created_at"])
+
+    def reports_about_user(self, user_id):
+        return self.t.find("reports", {"target_user_id": user_id}, order_desc="created_at")
+
+    def clear_report_details(self, reporter_id):
+        for report in self.reports_by_reporter(reporter_id):
+            if report.get("detail"):
+                self.t.update("reports", report["id"], {"detail": None})
+
+    def get_block(self, blocker_id, blocked_id):
+        rows = self.t.find("blocks", {"blocker_id": blocker_id, "blocked_id": blocked_id}, limit=1)
+        return rows[0] if rows else None
+
+    def active_block(self, blocker_id, blocked_id):
+        block = self.get_block(blocker_id, blocked_id)
+        return block if block and block["active"] else None
+
+    def blocks_by(self, blocker_id):
+        return [b for b in self.t.find("blocks", {"blocker_id": blocker_id}, order_desc="created_at") if b["active"]]
+
+    def create_block(self, row):
+        self.t.insert("blocks", row)
+
+    def update_block(self, block_id, fields):
+        self.t.update("blocks", block_id, fields)
+
+    def get_block_by_id(self, block_id):
+        return self.t.get("blocks", block_id)
+
+    def deactivate_blocks_for(self, user_id):
+        for key in ("blocker_id", "blocked_id"):
+            for block in self.t.find("blocks", {key: user_id}):
+                if block["active"]:
+                    self.t.update("blocks", block["id"], {"active": 0})
+
     def record_webhook_event(self, event_id, event_type, received_at):
         """Raises store.Conflict when this event id was already processed."""
         self.t.insert("webhook_events", {"id": event_id, "event_type": event_type, "received_at": received_at})

@@ -1,9 +1,10 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Notice, StatusPill } from '@/components/Bits';
 import { BookingPanel } from '@/components/BookingPanel';
+import { ReportSheet } from '@/components/ReportSheet';
 import { Header, NextSteps } from '@/components/Controls';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
@@ -14,12 +15,14 @@ import { usePalette } from '@/components/use-palette';
 import { ApiError } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
 import { checkPrice, formatCents, myTurn, offerStatusLabel, parseDollars, payoutAfterFee, PLATFORM_FEE_BPS } from '@/lib/market';
+import { BLOCK_EXPLANATION } from '@/lib/moderation';
 import { useSession } from '@/lib/session';
 import { radius, space } from '@/lib/theme';
 import type { Job, Offer } from '@/lib/v1';
 
-function OfferCard({ offer, me, onAction }: { offer: Offer; me: 'customer' | 'cleaner';
-  onAction: (action: 'accept' | 'decline' | 'withdraw' | 'counter', price?: number) => Promise<void> }) {
+function OfferCard({ offer, me, onAction, onReport, onBlock }: { offer: Offer; me: 'customer' | 'cleaner';
+  onAction: (action: 'accept' | 'decline' | 'withdraw' | 'counter', price?: number) => Promise<void>;
+  onReport?: () => void; onBlock?: () => void }) {
   const p = usePalette();
   const [price, setPrice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -59,6 +62,12 @@ function OfferCard({ offer, me, onAction }: { offer: Offer; me: 'customer' | 'cl
         </>
       ) : null}
       {me === 'cleaner' && open ? <Button variant="quiet" label="Withdraw my offer" onPress={() => void run('withdraw')} /> : null}
+      {onReport || onBlock ? (
+        <View style={styles.row}>
+          {onReport ? <Button variant="quiet" label="Report" onPress={onReport} /> : null}
+          {onBlock ? <Button variant="quiet" label="Block" onPress={onBlock} /> : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -73,6 +82,7 @@ export default function JobDetail() {
   const [newPrice, setNewPrice] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [reporting, setReporting] = useState<{ kind: 'job' | 'offer'; targetId: string; title: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -120,6 +130,20 @@ export default function JobDetail() {
     }
   };
 
+  // Block the other person. The server hides you from each other and withdraws open offers.
+  const block = async (kind: 'job' | 'offer', targetId: string, name: string) => {
+    const yes = await confirmAction({ title: `Block ${name}?`, message: BLOCK_EXPLANATION,
+      confirmLabel: 'Block', cancelLabel: 'Not now', destructive: true });
+    if (!yes) return;
+    try {
+      await client.block(kind, targetId);
+      if (kind === 'job') router.replace('/market'); // the job is now hidden from a blocked cleaner
+      else await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not block this person. Try again.');
+    }
+  };
+
   const cancel = async () => {
     const yes = await confirmAction({ title: 'Cancel this job?', message: 'Cleaners can no longer send offers.',
       confirmLabel: 'Cancel job', cancelLabel: 'Keep job', destructive: true });
@@ -149,16 +173,23 @@ export default function JobDetail() {
           <Text tone="soft">{job.notes}</Text>
         </View>
       ) : null}
+      {job && role === 'cleaner' ? (
+        <View style={styles.row}>
+          <Button variant="quiet" label="Report this job"
+            onPress={() => setReporting({ kind: 'job', targetId: job.id, title: 'Report this job' })} />
+          <Button variant="quiet" label="Block this customer" onPress={() => void block('job', job.id, 'this customer')} />
+        </View>
+      ) : null}
 
       {job?.status === 'booked' ? (
         <NextSteps
           title="What happens next"
           steps={role === 'customer'
             ? [`The price is locked at ${formatCents(job.price_cents ?? offers.find((o) => o.status === 'accepted')?.price_cents ?? 0)}.`,
-               'AdenClean emails you and your cleaner to confirm the address and arrival time.',
-               'After the cleaning, you will be able to leave a review.']
+               'Pay in the app so your cleaner can start on the day.',
+               'When the cleaning is done, confirm it so your cleaner is paid.']
             : ['The price is locked. Keep the date free.',
-               'AdenClean emails you and the customer to confirm the address and arrival time.',
+               'Check in when you arrive, and check out when the job is done.',
                'Bring your supplies if the job says you will.']}
         />
       ) : null}
@@ -184,8 +215,12 @@ export default function JobDetail() {
         <Text tone="soft">No offers yet. Cleaners near you can see this job now.</Text>
       ) : null}
       {offers.map((offer) => (
-        <OfferCard key={offer.id} offer={offer} me={role} onAction={(action, price) => act(offer.id, action, price)} />
+        <OfferCard key={offer.id} offer={offer} me={role} onAction={(action, price) => act(offer.id, action, price)}
+          onReport={role === 'customer' ? () => setReporting({ kind: 'offer', targetId: offer.id, title: 'Report this offer' }) : undefined}
+          onBlock={role === 'customer' ? () => void block('offer', offer.id, offer.cleaner_name ?? 'this cleaner') : undefined} />
       ))}
+      <ReportSheet visible={!!reporting} title={reporting?.title ?? ''} onClose={() => setReporting(null)}
+        onSend={(reason, detail) => client.report(reporting!.kind, reporting!.targetId, reason, detail)} />
 
       {role === 'customer' && job && ['open', 'expired'].includes(job.status) ? (
         <Button variant="quiet" label="Cancel this job" onPress={() => void cancel()} />

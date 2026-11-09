@@ -86,7 +86,8 @@ export default function SignIn() {
               {' '}and{' '}
               <Text tone="primary" style={{ textDecorationLine: 'underline' }} accessibilityRole="link"
                 onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)}>privacy policy</Text>
-              . You must be 18 or older.
+              . You must be 18 or older. No abusive, harassing or unsafe content: we may remove content and accounts.
+              You can report or block anyone in the app.
             </Text>
           </Checkbox>
           {error ? <Notice kind="error">{error}</Notice> : null}

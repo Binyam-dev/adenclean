@@ -11,15 +11,19 @@ from . import jobs, offers
 BOOKING_LOCK = threading.Lock()
 
 
-def accept_offer(load_job, load_offer, save, offer_id, actor_id, actor_role):
+def accept_offer(load_job, load_offer, save, offer_id, actor_id, actor_role, check=None):
     """Accept an offer and book its job exactly once.
 
     load_job(job_id) / load_offer(offer_id) return current records; save(job, offer) persists
-    both. Raises offers.OfferError or jobs.TransitionError if anything changed underneath.
+    both. check(job, offer), if given, runs inside the lock after the records are re-read and
+    raises offers.OfferError to refuse (used for blocks and suspensions that happened since the
+    request began). Raises offers.OfferError or jobs.TransitionError if anything changed underneath.
     """
     with BOOKING_LOCK:
         offer = load_offer(offer_id)
         job = load_job(offer.job_id)
+        if check is not None:
+            check(job, offer)
         if actor_role == jobs.CUSTOMER and job["customer_id"] != actor_id:
             raise offers.OfferError("Only the customer who posted this job can accept")
         if actor_role == jobs.CLEANER and offer.cleaner_id != actor_id:

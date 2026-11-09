@@ -41,6 +41,7 @@ export default function RootLayout() {
         <Stack.Screen name="job/new" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="job/[id]" />
         <Stack.Screen name="cleaner" />
+        <Stack.Screen name="blocked" />
       </Stack>
     </>
   );

@@ -30,6 +30,7 @@ function showLogin(message = "", allowPasswordEntry = false) {
 function showDashboard() {
   loginSection.hidden = true;
   dashboardSection.hidden = false;
+  if (typeof refreshReportCount === "function") refreshReportCount(); // open reports, shown on the tab
 }
 
 async function parseResponse(response) {
@@ -117,8 +118,9 @@ function configureStatusOptions() {
     reviews: ["all", "new", "reviewed"],
     issues: ["all", "open", "in_review", "resolved"],
     vetting: ["all"],
+    moderation: ["all"],
   };
-  statusFilter.closest("label").hidden = recordType === "vetting";
+  statusFilter.closest("label").hidden = recordType === "vetting" || recordType === "moderation";
   const labels = {
     all: "All statuses",
     pending: "Pending",
@@ -147,6 +149,7 @@ function configureStatusOptions() {
 async function loadRecords() {
   if (dashboardSection.hidden) return;
   if (recordType === "vetting") return loadVetting();
+  if (recordType === "moderation") return loadModeration();
   recordList.setAttribute("aria-busy", "true");
   setNotice(dashboardNotice, "");
   try {

@@ -9,7 +9,12 @@ const SERVER_MESSAGE = 'Something went wrong on our side. Try again in a moment.
 
 type Json = Record<string, unknown>;
 
-export type User = { id: string; email: string; displayName: string; roles: string[] };
+export type User = { id: string; email: string; displayName: string; roles: string[]; suspended?: boolean };
+
+/** Someone the signed-in person has blocked. The server shows a name and a block id, never a user id. */
+export type Block = { id: string; name: string; created_at: string };
+
+export type ReportTarget = 'job' | 'offer';
 
 export type Job = {
   id: string;
@@ -264,6 +269,30 @@ export class Client {
   async cancelBooking(jobId: string): Promise<{ refundCents: number; cleanerFeeCents: number }> {
     const p = await this.call('POST', `/api/v1/jobs/${jobId}/cancel-booking`, {});
     return { refundCents: Number(p.refundCents ?? 0), cleanerFeeCents: Number(p.cleanerFeeCents ?? 0) };
+  }
+
+  // -- reporting and blocking ---------------------------------------------------------
+
+  /** Report a job's notes or an offer. Reporting the same thing twice is merged by the server. */
+  async report(kind: ReportTarget, targetId: string, reason: string, detail: string): Promise<{ merged: boolean }> {
+    const body: Json = { targetKind: kind, targetId, reason };
+    if (detail.trim()) body.detail = detail.trim();
+    const p = await this.call('POST', '/api/v1/reports', body);
+    return { merged: p.merged === true };
+  }
+
+  /** Block the other person on this job (a cleaner blocking a customer) or offer (either side). */
+  async block(kind: ReportTarget, targetId: string): Promise<string> {
+    const p = await this.call('POST', `/api/v1/${kind === 'job' ? 'jobs' : 'offers'}/${targetId}/block`, {});
+    return String(p.blockId);
+  }
+
+  async blocks(): Promise<Block[]> {
+    return (await this.call('GET', '/api/v1/blocks')).blocks as Block[];
+  }
+
+  async unblock(blockId: string): Promise<void> {
+    await this.call('POST', `/api/v1/blocks/${blockId}/remove`, {});
   }
 }
 
