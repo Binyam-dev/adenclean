@@ -1,3 +1,4 @@
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -70,10 +71,11 @@ class StaticIntegrityTests(unittest.TestCase):
         allowed = {"scripts/migrate_sqlite_to_appwrite.py", "tests/test_static_integrity.py",
                    "tests/test_migrate.py", "tests/test_store.py", "tests/test_app.py",
                    "README.md"}  # the README only points at the migration script
-        skipped_dirs = {".git", "node_modules", "__pycache__", "docs", ".expo", "dist"}
-        for path in ROOT.rglob("*"):
-            relative = path.relative_to(ROOT).as_posix()
-            if not path.is_file() or skipped_dirs & set(path.relative_to(ROOT).parts):
+        # Only files tracked by git count: a local virtualenv, node_modules or log file is not ours.
+        tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+        for relative in tracked:
+            path = ROOT / relative
+            if not path.is_file() or relative.startswith("docs/"):
                 continue
             if relative in allowed or path.suffix in {".png", ".ttf", ".ico", ".jpg"}:
                 continue
