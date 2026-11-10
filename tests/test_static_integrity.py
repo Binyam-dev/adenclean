@@ -61,7 +61,9 @@ class StaticIntegrityTests(unittest.TestCase):
 
     def test_local_data_and_environment_files_are_ignored(self):
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
-        for pattern in ("__pycache__/", "*.py[cod]", ".env", "/backups/"):
+        # /data/ held the old local database (customer details, admin password hashes); a checkout
+        # that ran it still has the file, so it must stay ignored after the Appwrite move.
+        for pattern in ("__pycache__/", "*.py[cod]", ".env", "/backups/", "/data/", "*.sqlite3"):
             with self.subTest(pattern=pattern):
                 self.assertIn(pattern, ignored)
 
@@ -70,7 +72,8 @@ class StaticIntegrityTests(unittest.TestCase):
         # allowed place that reads an old SQLite file, and this test names the words it bans.
         allowed = {"scripts/migrate_sqlite_to_appwrite.py", "tests/test_static_integrity.py",
                    "tests/test_migrate.py", "tests/test_store.py", "tests/test_app.py",
-                   "README.md"}  # the README only points at the migration script
+                   "README.md",  # the README only points at the migration script
+                   ".gitignore"}  # keeps old local database files out of Git
         # Only files tracked by git count: a local virtualenv, node_modules or log file is not ours.
         tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
         for relative in tracked:
