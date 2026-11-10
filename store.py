@@ -442,15 +442,16 @@ class AppwriteStore:
         ]
 
     def set_admin_active(self, email, active):
+        self._update_admin(email, {"active": 1 if active else 0})
+
+    def set_admin_password(self, email, password_hash):
+        self._update_admin(email, {"password_hash": password_hash})
+
+    def _update_admin(self, email, data):
         admin = self.get_admin_by_email(email)
         if admin is None:
             raise NotFound("No admin with that email.")
-        self._call(
-            self.db.update_row,
-            table_id="admins",
-            row_id=admin["id"],
-            data={"active": 1 if active else 0},
-        )
+        self._call(self.db.update_row, table_id="admins", row_id=admin["id"], data=data)
 
     # -- backup ----------------------------------------------------------------
 

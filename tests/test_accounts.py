@@ -50,6 +50,19 @@ class CreateAdminTests(unittest.TestCase):
         self.assertIn("boss@example.com", self.output[-1])
         self.assertNotIn("password", self.output[-1].lower())
 
+    def test_password_resets_a_forgotten_password(self):
+        self.assertEqual(self.run_cli("add", "boss@example.com"), 0)
+        self.assertEqual(self.run_cli("password", "Boss@Example.com", passwords=("a brand new password",) * 2), 0)
+        admin = self.store.get_admin_by_email("boss@example.com")
+        self.assertTrue(auth.verify_password("a brand new password", admin["password_hash"]))
+        self.assertFalse(auth.verify_password("a good long password", admin["password_hash"]))
+        self.assertEqual(admin["active"], 1)
+        self.assertEqual(self.run_cli("password", "ghost@example.com"), 1)
+        self.assertEqual(self.run_cli("password", "boss@example.com", passwords=("short", "short")), 2)
+        self.assertEqual(self.run_cli("password", "boss@example.com", passwords=("another long one!", "not the same one")), 2)
+        admin = self.store.get_admin_by_email("boss@example.com")
+        self.assertTrue(auth.verify_password("a brand new password", admin["password_hash"]))
+
     def test_rejects_weak_mismatched_and_invalid_input(self):
         self.assertEqual(self.run_cli("add", "a@example.com", passwords=("short", "short")), 2)
         self.assertEqual(self.run_cli("add", "a@example.com", passwords=("a good long password", "different long one")), 2)

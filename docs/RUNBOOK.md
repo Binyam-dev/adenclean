@@ -70,9 +70,13 @@ Moving an old SQLite file from before the Appwrite move: `python scripts/migrate
 python create_admin.py add someone@example.com
 python create_admin.py list
 python create_admin.py disable someone@example.com   # ends their access on their next request
+python create_admin.py enable someone@example.com
+python create_admin.py password someone@example.com  # prompts for a new password
 ```
 
-A forgotten password: disable the account, add it again with a new password. Sessions last 8 hours.
+A forgotten password: `python create_admin.py password someone@example.com`. The account stays active and keeps its history. Sessions last 8 hours.
+
+A password someone else may know: run `disable`, then `password`, then change `SESSION_SECRET` in Render (this signs everyone out, including any session made with the old password), then `enable`.
 
 ## When something breaks
 

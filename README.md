@@ -41,6 +41,7 @@ python create_admin.py add someone@example.com
 python create_admin.py list
 python create_admin.py disable someone@example.com   # ends their access immediately
 python create_admin.py enable someone@example.com
+python create_admin.py password someone@example.com  # new password for a forgotten one
 ```
 
 ## Operations

@@ -4,6 +4,7 @@
     python create_admin.py list
     python create_admin.py disable you@example.com  # blocks sign-in immediately
     python create_admin.py enable you@example.com
+    python create_admin.py password you@example.com # prompts for a new password
 
 Uses the same storage settings as the app (ADENCLEAN_STORAGE, APPWRITE_*).
 """
@@ -30,20 +31,26 @@ def main(argv, store=None, password_reader=getpass.getpass, out=print):
             out(f"{admin['email']}  {admin['role']}  {state}  since {admin['created_at']}")
         return 0
 
-    if command in {"add", "disable", "enable"} and len(argv) == 2:
+    if command in {"add", "disable", "enable", "password"} and len(argv) == 2:
         email = argv[1].strip().lower()
         if len(email) > 190 or not EMAIL_PATTERN.fullmatch(email):
             out("Enter a valid email address (190 characters or fewer).")
             return 2
 
-        if command == "add":
-            password = password_reader("Password (12+ characters): ")
-            problem = auth.password_problem(password)
-            if problem:
-                out(problem)
+        if command == "password":
+            if store.get_admin_by_email(email) is None:
+                out("No admin with that email.")
+                return 1
+            password = _read_new_password(password_reader, out)
+            if password is None:
                 return 2
-            if password != password_reader("Repeat password: "):
-                out("The passwords did not match.")
+            store.set_admin_password(email, auth.hash_password(password))
+            out(f"Password changed: {email}")
+            return 0
+
+        if command == "add":
+            password = _read_new_password(password_reader, out)
+            if password is None:
                 return 2
             try:
                 store.add_admin(
@@ -72,6 +79,19 @@ def main(argv, store=None, password_reader=getpass.getpass, out=print):
 
     out(__doc__)
     return 2
+
+
+def _read_new_password(password_reader, out):
+    """Asks twice; returns the password, or None after saying what was wrong."""
+    password = password_reader("Password (12+ characters): ")
+    problem = auth.password_problem(password)
+    if problem:
+        out(problem)
+        return None
+    if password != password_reader("Repeat password: "):
+        out("The passwords did not match.")
+        return None
+    return password
 
 
 if __name__ == "__main__":
