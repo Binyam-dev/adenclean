@@ -38,11 +38,8 @@ describe('retry rules', () => {
     for (const status of [0, 502, 503, 504]) assert.equal(shouldRetry(status, true, 0), true, String(status));
   });
 
-  it('sending retries only when the server certainly never saw the request', () => {
-    assert.equal(shouldRetry(502, false, 0), true);
-    assert.equal(shouldRetry(503, false, 0), true);
-    assert.equal(shouldRetry(0, false, 0), false); // dropped connection: it may have been saved
-    assert.equal(shouldRetry(504, false, 0), false); // gateway timeout: it may have been saved
+  it('sending is never retried: any failure can arrive after the server saved it', () => {
+    for (const status of [0, 502, 503, 504]) assert.equal(shouldRetry(status, false, 0), false, String(status));
   });
 
   it('never retries an answer from the app itself, and stops after the allowed attempts', () => {
@@ -65,11 +62,12 @@ describe('a sleeping server', () => {
     assert.equal(calls.n, 3);
   });
 
-  it('sending a request retries a 503 once and saves it exactly once', async () => {
-    const calls = { n: 0 };
-    const sent = await sendRequest(draft, script([503, goodSend], calls));
-    assert.deepEqual(sent, { reference: 'REF1', token: 'tok' });
-    assert.equal(calls.n, 2);
+  it('sending a request is NOT repeated after a 502 or 503 from the gateway', async () => {
+    for (const status of [502, 503]) {
+      const calls = { n: 0 };
+      await assert.rejects(sendRequest(draft, script([status, goodSend], calls)), (e: unknown) => e instanceof ApiError && e.kind === 'server');
+      assert.equal(calls.n, 1, String(status));
+    }
   });
 
   it('sending a request is NOT repeated after a dropped connection', async () => {

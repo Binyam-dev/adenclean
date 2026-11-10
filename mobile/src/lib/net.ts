@@ -6,9 +6,10 @@
 //
 // - Reading (checking a request's status) is safe to repeat: it retries network failures and
 //   502/503/504 up to three times, waiting a little longer each time.
-// - Sending a request is NOT safe to repeat after the connection drops, because the server may
-//   already have saved it (a second record, a second private code). It waits longer for one
-//   answer and only retries a 502 or 503, which mean the server never saw the request.
+// - Sending a request is never repeated automatically. A dropped connection, a 502, 503 or 504
+//   can all arrive after the server saved it, and every send makes a new record and a new
+//   private code, so a repeat would duplicate the customer's request. It waits longer for its
+//   one answer instead.
 
 export const retry = {
   delaysMs: [1500, 4000],
@@ -20,10 +21,8 @@ export const retry = {
 
 /** Whether to try again after this outcome. `status` is 0 for a network failure. */
 export function shouldRetry(status: number, idempotent: boolean, attempt: number): boolean {
-  if (attempt >= retry.delaysMs.length) return false;
-  if (status === 0) return idempotent;
-  if (status === 502 || status === 503) return true;
-  return idempotent && status === 504;
+  if (!idempotent || attempt >= retry.delaysMs.length) return false;
+  return status === 0 || status === 502 || status === 503 || status === 504;
 }
 
 // -- "waking up" signal ----------------------------------------------------------------
