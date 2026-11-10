@@ -122,8 +122,13 @@ def run(base, admin_email=None, admin_password=None, out=print):
         if not step(f"admin: the {record_type[:-1]} is listed", status == 200 and bool(mine), f"HTTP {status}"):
             continue
         step(f"admin: moderate the {record_type[:-1]}", admin_status(record_type, mine[0]["id"], first, new) == 200)
-    client.call("POST", "/api/admin/logout")
-    step("admin: sign out", client.call("GET", "/api/admin/records?type=requests")[0] in (401, 200))
+    status, _, headers = client.call("POST", "/api/admin/logout")
+    cleared = "max-age=0" in (headers.get("Set-Cookie") or "").lower()
+    if cleared:
+        client.cookie = None  # do what a browser does with the clearing cookie
+    step("admin: sign out clears the session cookie", status == 200 and cleared, f"HTTP {status}")
+    status = client.call("GET", "/api/admin/records?type=requests")[0]
+    step("admin: signed out, the admin list is refused", status == 401, f"HTTP {status}")
     return all(results)
 
 

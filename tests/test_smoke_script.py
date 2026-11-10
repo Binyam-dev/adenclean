@@ -52,6 +52,17 @@ class SmokeScriptTests(unittest.TestCase):
     def test_a_wrong_admin_password_fails_the_run(self):
         self.assertFalse(smoke_test.run(self.base, "ops@example.com", "wrong password here", out=self.lines.append))
 
+    def test_a_sign_out_that_does_not_clear_the_session_fails_the_run(self):
+        original = main.AdenCleanHandler.clear_admin_session
+
+        def broken_logout(handler):
+            handler.send_json(200, {"ok": True})  # answers, but leaves the session cookie in place
+
+        main.AdenCleanHandler.clear_admin_session = broken_logout
+        self.addCleanup(setattr, main.AdenCleanHandler, "clear_admin_session", original)
+        self.assertFalse(smoke_test.run(self.base, "ops@example.com", PASSWORD, out=self.lines.append))
+        self.assertTrue(any(line.startswith("FAIL") and "sign out" in line for line in self.lines), "\n".join(self.lines))
+
     def test_the_output_never_holds_a_private_code_or_password(self):
         smoke_test.run(self.base, "ops@example.com", PASSWORD, out=self.lines.append)
         text = "\n".join(self.lines)
