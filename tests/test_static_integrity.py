@@ -1,3 +1,4 @@
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -59,14 +60,32 @@ class StaticIntegrityTests(unittest.TestCase):
         self.assertIn('href="tel:+12403426088"', home)
 
     def test_local_data_and_environment_files_are_ignored(self):
-        for filename in (".gitignore", ".replitignore"):
-            ignored = (ROOT / filename).read_text(encoding="utf-8")
-            with self.subTest(file=filename):
-                self.assertIn("/data/", ignored)
-                self.assertIn("__pycache__/", ignored)
-                self.assertIn("*.py[cod]", ignored)
-                self.assertIn(".env", ignored)
-                self.assertIn("/backups/", ignored)
+        ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        for pattern in ("__pycache__/", "*.py[cod]", ".env", "/backups/"):
+            with self.subTest(pattern=pattern):
+                self.assertIn(pattern, ignored)
+
+    def test_no_replit_supabase_or_sqlite_leftovers(self):
+        # The data layer is Appwrite only. scripts/migrate_sqlite_to_appwrite.py is the one
+        # allowed place that reads an old SQLite file, and this test names the words it bans.
+        allowed = {"scripts/migrate_sqlite_to_appwrite.py", "tests/test_static_integrity.py",
+                   "tests/test_migrate.py", "tests/test_store.py", "tests/test_app.py",
+                   "README.md"}  # the README only points at the migration script
+        # Only files tracked by git count: a local virtualenv, node_modules or log file is not ours.
+        tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+        for relative in tracked:
+            path = ROOT / relative
+            if not path.is_file() or relative.startswith("docs/"):
+                continue
+            if relative in allowed or path.suffix in {".png", ".ttf", ".ico", ".jpg"}:
+                continue
+            if path.name == "package-lock.json":
+                continue
+            with self.subTest(file=relative):
+                self.assertNotIn("replit", path.name.lower())
+                text = path.read_text(encoding="utf-8", errors="ignore").lower()
+                for word in ("sqlite", "supabase", "replit"):
+                    self.assertNotIn(word, text)
 
 
 if __name__ == "__main__":

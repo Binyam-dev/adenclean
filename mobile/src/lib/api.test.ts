@@ -66,8 +66,8 @@ describe('sending a request', () => {
 
   it('hides server failures behind a plain message', async () => {
     await assert.rejects(
-      sendRequest(draft, fake(500, { ok: false, error: 'sqlite3.OperationalError: database is locked' })),
-      (e: unknown) => e instanceof ApiError && e.kind === 'server' && !/sqlite/.test(e.message),
+      sendRequest(draft, fake(500, { ok: false, error: 'Traceback: storage driver said the table is locked' })),
+      (e: unknown) => e instanceof ApiError && e.kind === 'server' && !/Traceback|storage driver/.test(e.message),
     );
     await assert.rejects(sendRequest(draft, fake(502, '<html>Bad gateway</html>')), (e: unknown) => e instanceof ApiError && e.kind === 'server');
   });

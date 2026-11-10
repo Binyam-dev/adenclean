@@ -40,9 +40,11 @@ Tell us what needs cleaning and when. AdenClean reviews each request, and you ca
 **Age rating:** 4+. In the questionnaire answer "None" or "No" to every item. The app has
 no user-generated content that other people can see: reviews go privately to AdenClean.
 
-**Screenshots:** `store/screenshots/ios-6.9/` (1320 x 2868). Upload the six images in
-order. App Store Connect scales them for smaller iPhones. The app is iPhone only, so no
-iPad screenshots are needed.
+**Screenshots:** upload both sets, six images each, in order: `store/screenshots/ios-6.3/`
+(1206 x 2622, the iPhone with Dynamic Island "medium display" set Apple requires) and
+`store/screenshots/ios-6.9/` (1320 x 2868). Apple's page is inconsistent about which set is
+mandatory, so supplying both is the safe choice. The app is iPhone only, so no iPad
+screenshots are needed.
 
 ### App Privacy ("nutrition label")
 
@@ -51,12 +53,19 @@ advertising.
 
 | Data type | Collected | Linked to the person | Used for |
 | --- | --- | --- | --- |
-| Name | Yes | Yes | App functionality |
-| Email address | Yes | Yes | App functionality |
-| Physical address (the town or ZIP code they type) | Yes | Yes | App functionality |
-| Other user content (notes, reviews, issue reports) | Yes | Yes | App functionality |
+| Contact Info > Name | Yes | Yes | App functionality |
+| Contact Info > Email address | Yes | Yes | App functionality |
+| Location > Coarse location (the town or ZIP code they type) | Yes | Yes | App functionality |
+| User Content > Other user content (request notes, reviews) | Yes | Yes | App functionality |
+| User Content > Customer support (service issue reports) | Yes | Yes | App functionality |
 
-Tracking: **No**. Third-party advertising: **No**. Analytics: **None** in the app.
+Apple's pages do not say whether a typed town or ZIP counts as location, so it is declared
+as Coarse location to be safe. The same answers are written into `ios.privacyManifests` in
+`app.json`, so the binary and the label agree.
+
+Tracking: **No**. Third-party advertising: **No**. Analytics: **None** in the app. No
+crash-reporting SDK is in the app (see `docs/DECISIONS.md`); if one is added, add Crash
+Data, Performance Data and Other Diagnostic Data here and in the Play Data safety form.
 Encryption: the app uses HTTPS only, so answer "No" to non-exempt encryption
 (`ITSAppUsesNonExemptEncryption` is already set to false).
 
@@ -108,7 +117,7 @@ requests from their phone at any time.
 | Question | Answer |
 | --- | --- |
 | Does the app collect or share user data? | Collects: yes. Shares with other companies: no. |
-| Data types collected | Name, email address, address (the town or ZIP code typed in), other user-generated content (notes, reviews, reports) |
+| Data types collected | Name, email address, approximate location (the town or ZIP code typed in; Google's pages do not say whether typed input counts, so it is declared to be safe), other user-generated content (notes, reviews, reports) |
 | Is collection required or optional | Required to send a request; notes are optional |
 | Why it is collected | App functionality |
 | Is data encrypted in transit | Yes (HTTPS) |

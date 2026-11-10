@@ -6,13 +6,16 @@ input validation lives in validation.py.
 """
 
 import json
+import logging
 import os
 import threading
 import time
+import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
+import observability
 import store as storage
 from admin_routes import AdminRoutes
 from api_v1 import MarketplaceRoutes
@@ -41,6 +44,13 @@ DEFAULT_PORT = 5000
 
 ADMIN_ALIASES = ("vetting", "moderation")  # /api/admin/<name> -> /api/v1/admin/<name>
 ASSET_TYPES = {"png", "jpg", "jpeg", "svg", "ico", "ttf", "woff", "woff2"}
+log = logging.getLogger("adenclean.http")
+# The site has no inline scripts or styles and loads nothing from other origins.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
+SERVER_ERROR_MESSAGE = "Something went wrong on our side. Please try again in a moment."
 
 
 def cache_policy(request_path):
@@ -107,12 +117,21 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
         if 0 < length <= MAX_BODY_BYTES:
             self.rfile.read(length)
 
+    def list_directory(self, path):
+        """Never show a folder's contents; a folder is just not found."""
+        self.send_error(404, "Not found")
+        return None
+
     def end_headers(self):
         if proxy_hops():  # served over HTTPS by the proxy
             self.send_header("Strict-Transport-Security", "max-age=31536000")
         self.send_header("Cache-Control", cache_policy(self.path))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "geolocation=(), camera=(), microphone=(), payment=()")
+        self.send_header("X-Request-Id", getattr(self, "request_id", "-"))
         dev_origin = os.environ.get("ADENCLEAN_DEV_CORS_ORIGIN", "")
         # Local development only (Expo web on another port). Never set this in production.
         if dev_origin.startswith("http://localhost:") and self.headers.get("Origin") == dev_origin:
@@ -125,6 +144,65 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
         self.send_response(204 if os.environ.get("ADENCLEAN_DEV_CORS_ORIGIN") else 405)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    # -- one entry point per request: timing, a request id, and a JSON answer for any crash --
+
+    def _dispatch(self, handler):
+        self._started = time.monotonic()
+        self.request_id = uuid.uuid4().hex[:12]
+        try:
+            handler()
+        except (BrokenPipeError, ConnectionError):
+            pass  # the visitor went away; nothing to answer
+        except Exception as error:  # a bug: answer consistently, log it, report it
+            path = urlsplit(self.path).path
+            log.exception("unhandled error", extra={"fields": {"rid": self.request_id, "path": path}})
+            observability.capture(error, self.request_id, path)
+            try:
+                self.send_json(500, {"ok": False, "error": SERVER_ERROR_MESSAGE})
+            except OSError:
+                pass
+
+    def do_GET(self):
+        self._dispatch(self._get)
+
+    def do_POST(self):
+        self._dispatch(self._post)
+
+    def do_HEAD(self):
+        self._dispatch(super().do_HEAD)
+
+    def log_request(self, code="-", size="-"):
+        """One JSON line per request. No query string, body, cookie or private code is logged."""
+        started = getattr(self, "_started", None)
+        log.info("request", extra={"fields": {
+            "rid": getattr(self, "request_id", "-"),
+            "method": self.command,
+            "path": urlsplit(self.path).path[:200],
+            "status": int(code) if str(code).isdigit() else str(code),
+            "ms": round((time.monotonic() - started) * 1000) if started else None,
+            "ip": client_address(self.client_address[0], self.headers.get("X-Forwarded-For", ""), proxy_hops()),
+        }})
+
+    def log_message(self, format, *args):  # malformed requests and timeouts from the base class
+        log.warning("http", extra={"fields": {"detail": (format % args)[:200]}})
+
+    def health(self):
+        """/healthz: the process is up (Render's check). /health: the same plus what it runs.
+        /health?deep=1 also reads one row from storage and answers 503 if that fails."""
+        if urlsplit(self.path).path == "/healthz":
+            self.send_json(200, {"ok": True})  # Render's check: nothing but "alive"
+            return
+        payload = {"ok": True, "storage": STORE.name, "release": observability.release()}
+        if parse_qs(urlsplit(self.path).query).get("deep") == ["1"]:
+            self.enforce_rate_limit(bucket="health", limit=30, message="Too many health checks.")
+            try:
+                STORE.has_admins()
+                payload["database"] = "ok"
+            except StoreError:
+                self.send_json(503, {"ok": False, "storage": STORE.name, "database": "unreachable"})
+                return
+        self.send_json(200, payload)
 
     def send_json(self, status, payload, headers=None):
         self.discard_unread_body()
@@ -197,7 +275,7 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
                 return True
         return False
 
-    def do_GET(self):
+    def _get(self):
         path = urlsplit(self.path).path
         if path == "/index.html":  # one address per page, so search engines see one copy
             self.send_response(301)
@@ -243,8 +321,11 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
                 self.send_storage_error("The records could not be loaded. Please try again.")
             return
 
-        if path == "/healthz":
-            self.send_json(200, {"ok": True})
+        if path in ("/healthz", "/health"):
+            try:
+                self.health()
+            except ApiError as error:
+                self.send_json(error.status, {"ok": False, "error": error.message})
             return
 
         if path.startswith("/api/"):
@@ -257,7 +338,7 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
             return
         super().do_GET()
 
-    def do_POST(self):
+    def _post(self):
         path = urlsplit(self.path).path
         if path.startswith("/api/v1/"):
             self.handle_v1("POST")
@@ -280,7 +361,7 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
                 self.send_storage_error("The feedback could not be saved. Please try again.")
             return
 
-        if path in {"/api/admin/session", "/api/admin/logout", "/api/admin/records"}:
+        if path in {"/api/admin/session", "/api/admin/logout", "/api/admin/records", "/api/admin/assignment"}:
             try:
                 if path == "/api/admin/session":
                     self.enforce_rate_limit(
@@ -299,7 +380,10 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
                         limit=ADMIN_RATE_LIMIT_MAX_REQUESTS,
                         message="Too many changes in a short time. Please wait a moment.",
                     )
-                    self.update_admin_record()
+                    if path == "/api/admin/assignment":
+                        self.update_admin_assignment()
+                    else:
+                        self.update_admin_record()
             except ApiError as error:
                 self.send_json(error.status, {"ok": False, "error": error.message})
             except StoreError:
@@ -334,16 +418,18 @@ def main():
     if not STATIC_DIR.is_dir():
         raise RuntimeError(f"Static site directory not found: {STATIC_DIR}")
 
+    monitored = observability.configure()
     STORE = storage.open_store()
     port = int(os.environ.get("PORT", DEFAULT_PORT))
     server = ThreadingHTTPServer(("0.0.0.0", port), AdenCleanHandler)
-    print(f"AdenClean is available on port {port} (storage: {STORE.name}).")
-    if STORE.name == "sqlite":
-        print("WARNING: using local SQLite. Set ADENCLEAN_STORAGE=appwrite before collecting real data.")
+    log.info("started", extra={"fields": {"port": port, "storage": STORE.name, "monitoring": monitored,
+                                           "release": observability.release()}})
+    if STORE.name == "memory":
+        log.warning("in-memory storage: nothing is saved; local development only")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nShutting down AdenClean.")
+        log.info("stopping")
     finally:
         server.server_close()
 

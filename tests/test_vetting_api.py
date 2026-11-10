@@ -199,13 +199,6 @@ class VettingCase(MarketplaceCase):
         self.assertEqual(self.v1("POST", "/api/v1/cleaner/apply", {"over18": True}, token)[0], 409)
 
 
-class SqliteVettingTests(VettingCase, unittest.TestCase):
-    def make_store(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        return storage.SqliteStore(Path(self.directory.name) / "v.sqlite3")
-
-
 @unittest.skipUnless(HAVE_APPWRITE, "appwrite package not installed")
 class AppwriteVettingTests(VettingCase, unittest.TestCase):
     def make_store(self):
@@ -215,7 +208,7 @@ class AppwriteVettingTests(VettingCase, unittest.TestCase):
 def load_tests(loader, tests, pattern):
     own = [n for n in VettingCase.__dict__ if n.startswith("test_")]
     suite = unittest.TestSuite()
-    for cls in (SqliteVettingTests, AppwriteVettingTests):
+    for cls in (AppwriteVettingTests,):
         suite.addTests(cls(name) for name in own)
     return suite
 

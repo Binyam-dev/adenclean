@@ -1,1 +1,2 @@
 appwrite>=27,<28
+sentry-sdk>=2,<3

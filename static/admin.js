@@ -322,6 +322,7 @@ function renderRecords(records) {
       addDetail(details, "Preferred date", friendlyDate(record.preferred_date));
       addDetail(details, "Preferred time", record.preferred_time);
       if (record.notes) addDetail(details, "Customer note", record.notes);
+      addDetail(details, "Assigned to", record.assigned_to);
     } else if (recordType === "availability") {
       let cleanerServices = record.service_types;
       try {
@@ -366,6 +367,7 @@ function renderRecords(records) {
       historyList.append(item);
     });
     card.append(historyHeading, historyList);
+    if (recordType === "requests") card.append(assignmentControl(record));
 
     const actions = actionOptions(record);
     if (actions.length) {

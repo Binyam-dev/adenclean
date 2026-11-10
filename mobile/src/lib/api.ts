@@ -1,5 +1,6 @@
 import { API_URL } from './config';
 import { LookupCache } from './lookup-cache';
+import { retry, shouldRetry, trackSlow } from './net';
 import { clean, type RequestDraft } from './validation';
 
 export class ApiError extends Error {
@@ -17,22 +18,42 @@ const SERVER_MESSAGE = 'Something went wrong on our side. Try again in a moment.
 
 type Json = Record<string, unknown>;
 
-async function post(path: string, body: Json, fetcher: typeof fetch = fetch): Promise<Json> {
+/** One try. Resolves to the response, or null when the connection failed or timed out. */
+async function attemptOnce(path: string, body: Json, fetcher: typeof fetch, timeoutMs: number): Promise<Response | null> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
-  let response: Response;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    response = await fetcher(`${API_URL}${path}`, {
+    return await fetcher(`${API_URL}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
   } catch {
-    throw new ApiError('network', 0, NETWORK_MESSAGE);
+    return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Sends a JSON POST. `idempotent` is true for reads (the status check), which are safe to
+ * repeat; see net.ts for why sending a request is treated differently.
+ */
+async function post(path: string, body: Json, fetcher: typeof fetch = fetch, idempotent = false): Promise<Json> {
+  const timeoutMs = idempotent ? retry.readTimeoutMs : retry.writeTimeoutMs;
+  const done = trackSlow();
+  let response: Response | null;
+  try {
+    for (let attempt = 0; ; attempt += 1) {
+      response = await attemptOnce(path, body, fetcher, timeoutMs);
+      if (!shouldRetry(response ? response.status : 0, idempotent, attempt)) break;
+      await retry.sleep(retry.delaysMs[attempt]);
+    }
+  } finally {
+    done();
+  }
+  if (response === null) throw new ApiError('network', 0, NETWORK_MESSAGE);
 
   let payload: Json = {};
   try {
@@ -88,7 +109,7 @@ export type Lookup = {
 };
 
 export async function lookup(token: string, fetcher?: typeof fetch): Promise<Lookup> {
-  const p = await post('/api/customer-feedback', { action: 'lookup', token }, fetcher);
+  const p = await post('/api/customer-feedback', { action: 'lookup', token }, fetcher, true);
   return {
     status: String(p.status ?? 'pending'),
     ready: p.ready === true,

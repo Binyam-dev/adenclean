@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { usePalette } from '@/components/use-palette';
+import { MARKET_ENABLED } from '@/lib/market';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -37,11 +38,15 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="new" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="request/[ref]" />
-        <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="job/new" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="job/[id]" />
-        <Stack.Screen name="cleaner" />
-        <Stack.Screen name="blocked" />
+        {/* Marketplace screens exist only in builds made with EXPO_PUBLIC_MARKETPLACE=1. In a
+            version 1 build a link to them goes nowhere, so no sign-in or payment screen can be reached. */}
+        <Stack.Protected guard={MARKET_ENABLED}>
+          <Stack.Screen name="sign-in" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="job/new" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="job/[id]" />
+          <Stack.Screen name="cleaner" />
+          <Stack.Screen name="blocked" />
+        </Stack.Protected>
       </Stack>
     </>
   );

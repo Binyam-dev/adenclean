@@ -1,4 +1,27 @@
-# Marketplace decisions
+# Decisions
+
+## MVP release decisions (2026-11-09)
+
+One line per non-obvious choice and why. Marketplace decisions follow below.
+
+| Decision | Why |
+| --- | --- |
+| The store MVP is version 1 only: request, check by private link, review or report an issue. The marketplace stays in the code behind `MARKETPLACE_ENABLED` and `EXPO_PUBLIC_MARKETPLACE`, both off. | The brief's v1 scope excludes sign-in. The marketplace needs legal sign-off (worker classification, background-check disclosure), live Stripe and Checkr accounts, and insurance, none of which exist. |
+| Removed the SQLite backend entirely. Local runs use `ADENCLEAN_STORAGE=memory`, which holds the same Appwrite tables in memory and is refused on Render. | The brief says no SQLite. Keeping one code path (the Appwrite one) means tests exercise what production runs. A typo in the env var can no longer send customer data to a local file. |
+| `ADENCLEAN_STORAGE` now defaults to `appwrite`, and the server refuses to start without the Appwrite settings. | Failing loudly beats starting with an empty, unsaved store. |
+| Kept one-off `scripts/migrate_sqlite_to_appwrite.py` (re-runnable, dry run, counts only). | The brief asks for a migration for existing SQLite data. Production already uses Appwrite, so this is for old files only. |
+| Admin accounts were already individual (scrypt, 8-hour signed sessions, disable takes effect at once). Not rebuilt. | Nothing to fix; the brief's description is out of date. |
+| "Assign" means a free-text `assigned_to` name on a customer request, set by an admin, recorded in the history. | Cleaners are not accounts in v1, so assignment cannot point at a user. Free text is the smallest thing that meets "admin can assign". |
+| Sending a request waits up to 60 s for one answer and retries only a 502 or 503. Status checks retry three times. | Repeating a send after a dropped connection could save it twice. A 502 or 503 means the server never saw it. |
+| No crash-reporting SDK in the app. Sentry is in the server only (`SENTRY_DSN`), with request data and local variables switched off. | An app SDK adds Crash, Performance and Diagnostic data types to both store privacy forms and three required-reason APIs, for little gain in a three-screen app. Server errors are the realistic failure point. |
+| Stripe's plugin and native module are excluded from builds unless `EXPO_PUBLIC_MARKETPLACE=1`; Stripe is loaded lazily when someone pays. | Version 1 has no payments, so the binary and the privacy answers should show none. Checked with Expo's autolinking report, with a control. |
+| Typed town or ZIP is declared as Coarse location in both privacy forms. | Neither Apple nor Google says whether typed input counts. Over-declaring is the safe error. |
+| Content-Security-Policy forbids inline scripts and styles. | The site has none. A test fails if one is added, and the pages were loaded in a browser with no violations. |
+| `/healthz` stays a bare `{"ok": true}`; `/health` adds storage and release; `/health?deep=1` reads storage. | Render's check should never depend on Appwrite being up (a database blip must not restart the server). The deep check is for people. |
+| Directory listing is switched off. | Python's static handler lists any folder under `static/`. Found in the security pass. |
+| Render stays a human gate (Starter plan, secrets, merge). | Billing and secrets are the owner's, and nothing here may deploy to production without approval. |
+
+## Marketplace decisions
 
 Defaults from the marketplace build brief (Nov 4, 2026). The owner can override any of them.
 Every value marked "config" lives in `marketplace/config.py` and can change per environment

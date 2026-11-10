@@ -204,7 +204,7 @@ export default function NewRequest() {
                 ))}
               </View>
               <Text variant="small" tone="soft">
-                This is when you'd like help. AdenClean talks through the exact timing with you.
+                This is when you&apos;d like help. AdenClean talks through the exact timing with you.
               </Text>
             </View>
           ) : null}
@@ -303,7 +303,7 @@ export default function NewRequest() {
                   ) : null}
                 </View>
                 <Text variant="body" style={{ flex: 1 }}>
-                  I agree to AdenClean saving these details to review my request. I understand it isn't a confirmed booking.
+                  I agree to AdenClean saving these details to review my request. I understand it isn&apos;t a confirmed booking.
                 </Text>
               </Pressable>
 

@@ -83,17 +83,13 @@ class AppCase:
 
     # -- tests -----------------------------------------------------------------
 
-    def test_public_privacy_notice_discloses_both_storage_modes(self):
-        # This notice is linked before consent and must be readable without an
-        # admin session, whether the server uses SQLite or Appwrite.
+    def test_public_privacy_notice_says_where_submissions_are_stored(self):
+        # This notice is linked before consent and must be readable without an admin session.
         with urllib.request.urlopen(self.base + "/policies.html", timeout=10) as response:
             self.assertEqual(response.status, 200)
             notice = response.read().decode("utf-8")
         self.assertIn("Appwrite", notice)
-        self.assertIn("SQLite", notice)
-        self.assertIn("development and tests only", notice)
-        self.assertIn("Do not submit real customer or cleaner information", notice)
-        self.assertNotIn("Submissions are stored in this preview’s local SQLite database", notice)
+        self.assertNotIn("SQLite", notice)
 
     def test_admin_setup_message_until_first_admin_exists(self):
         status, body, _ = self.call("GET", "/api/admin/session")
@@ -194,6 +190,31 @@ class AppCase:
     def test_health_check_needs_no_sign_in_and_hides_details(self):
         status, body, _ = self.call("GET", "/healthz")
         self.assertEqual((status, body), (200, {"ok": True}))
+
+    def test_admin_assigns_a_request_without_changing_its_status(self):
+        reference, _ = self.submit_request()
+        self.assertEqual(self.call("POST", "/api/admin/assignment", {"id": reference, "assignedTo": "Hana"})[0], 401)
+        self.add_admin()
+        cookie = self.sign_in()
+        status, body, _ = self.call("POST", "/api/admin/assignment", {"id": reference, "assignedTo": " Hana  T. "}, cookie)
+        self.assertEqual((status, body["assignedTo"]), (200, "Hana T."))
+        _, listing, _ = self.call("GET", "/api/admin/records?type=requests", cookie=cookie)
+        record = listing["records"][0]
+        self.assertEqual((record["status"], record["assigned_to"]), ("pending", "Hana T."))
+        self.assertEqual(record["history"][-1]["note"], "Assigned to Hana T.")
+        self.assertEqual(record["history"][-1]["actor"], EMAIL)
+        # Clearing works, and the status can still change afterwards.
+        self.assertEqual(self.call("POST", "/api/admin/assignment", {"id": reference, "assignedTo": ""}, cookie)[0], 200)
+        _, listing, _ = self.call("GET", "/api/admin/records?type=requests", cookie=cookie)
+        self.assertEqual(listing["records"][0]["assigned_to"], "")
+        self.assertEqual(self.change_status(cookie, reference, "pending", "approved")[0], 200)
+
+    def test_assignment_rejects_unknown_requests_and_oversized_names(self):
+        self.add_admin()
+        cookie = self.sign_in()
+        self.assertEqual(self.call("POST", "/api/admin/assignment", {"id": "NOSUCHREQUEST", "assignedTo": "A"}, cookie)[0], 404)
+        reference, _ = self.submit_request()
+        self.assertEqual(self.call("POST", "/api/admin/assignment", {"id": reference, "assignedTo": "x" * 101}, cookie)[0], 400)
 
     def test_rate_limit_separates_clients_behind_a_proxy(self):
         os.environ["ADENCLEAN_PROXY_HOPS"] = "1"
@@ -308,13 +329,6 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(main.proxy_hops({"ADENCLEAN_PROXY_HOPS": "99"}), 5)
         self.assertEqual(main.proxy_hops({"ADENCLEAN_PROXY_HOPS": "-3"}), 0)
         self.assertEqual(main.proxy_hops({"ADENCLEAN_PROXY_HOPS": "x"}), 0)
-
-
-class SqliteAppTests(AppCase, unittest.TestCase):
-    def make_store(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.addCleanup(self.directory.cleanup)
-        return storage.SqliteStore(Path(self.directory.name) / "app.sqlite3")
 
 
 @unittest.skipUnless(HAVE_APPWRITE, "appwrite package not installed")

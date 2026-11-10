@@ -1,22 +1,20 @@
 """Storage backends for AdenClean.
 
-Two interchangeable backends expose the same methods:
+``AppwriteStore`` is the only store. It talks to Appwrite TablesDB through a server API
+key that is limited to reading and writing rows.
 
-* ``AppwriteStore`` - production. Uses Appwrite TablesDB through a server API key.
-* ``SqliteStore``  - local development and tests. Never use it for real customer data.
+``open_store()`` picks where the tables live:
 
-Pick one with ``open_store()``. Production must set ``ADENCLEAN_STORAGE=appwrite``;
-the app refuses to start if that is set but the Appwrite settings are missing, so a
-typo cannot silently send customer data to a local file.
+* ``ADENCLEAN_STORAGE=appwrite`` (the default) - the real Appwrite project. The app refuses
+  to start if the Appwrite settings are missing, so a typo cannot lose customer data.
+* ``ADENCLEAN_STORAGE=memory`` - in-memory tables for local development and tests. Nothing
+  is saved; it is refused on Render.
 """
 
 import logging
 import os
-import sqlite3
 import threading
 import uuid
-from contextlib import closing
-from pathlib import Path
 
 log = logging.getLogger("adenclean.store")
 
@@ -31,6 +29,7 @@ LIST_FIELDS = {
     "requests": (
         "id", "created_at", "full_name", "email", "area", "service_type",
         "preferred_date", "preferred_time", "notes", "status", "status_updated_at",
+        "assigned_to",
     ),
     "availability": (
         "id", "created_at", "full_name", "email", "area", "service_types",
@@ -66,6 +65,8 @@ APPWRITE_SCHEMA = {
             ("status", VARCHAR, 20, True),
             ("status_updated_at", VARCHAR, 40, True),
             ("feedback_token_hash", VARCHAR, 64, True),
+            # Who at AdenClean (or which cleaner) is handling this request. Free text, set by an admin.
+            ("assigned_to", VARCHAR, 100, False),
         ],
         "indexes": [
             ("uniq_feedback_token", "unique", ["feedback_token_hash"]),
@@ -178,7 +179,7 @@ def _project(row, fields):
 
 
 def _blank_none(record):
-    for key in ("notes", "preferred_time", "area"):
+    for key in ("notes", "preferred_time", "area", "assigned_to"):
         if key in record and record[key] is None:
             record[key] = ""
     return record
@@ -186,317 +187,6 @@ def _blank_none(record):
 
 def _new_row_id():
     return uuid.uuid4().hex
-
-
-# ---------------------------------------------------------------------------
-# SQLite (local development and tests only)
-# ---------------------------------------------------------------------------
-
-class SqliteStore:
-    name = "sqlite"
-
-    def __init__(self, path):
-        self.path = Path(path)
-        self.init()
-
-    def _connect(self):
-        connection = sqlite3.connect(self.path, timeout=10)
-        connection.row_factory = sqlite3.Row
-        return connection
-
-    def init(self):
-        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        try:
-            os.chmod(self.path.parent, 0o700)
-        except OSError:
-            pass
-        try:
-            descriptor = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            os.chmod(self.path, 0o600)
-        else:
-            os.close(descriptor)
-
-        try:
-            with closing(self._connect()) as connection, connection:
-                connection.execute("PRAGMA journal_mode = WAL")
-                connection.executescript(
-                    """
-                    CREATE TABLE IF NOT EXISTS customer_requests (
-                        id TEXT PRIMARY KEY, created_at TEXT NOT NULL,
-                        full_name TEXT NOT NULL, email TEXT NOT NULL, area TEXT NOT NULL,
-                        service_type TEXT NOT NULL, preferred_date TEXT NOT NULL,
-                        preferred_time TEXT NOT NULL, notes TEXT NOT NULL,
-                        consent INTEGER NOT NULL,
-                        status TEXT NOT NULL DEFAULT 'pending',
-                        status_updated_at TEXT NOT NULL DEFAULT '',
-                        feedback_token_hash TEXT
-                    );
-                    CREATE TABLE IF NOT EXISTS cleaner_availability (
-                        id TEXT PRIMARY KEY, created_at TEXT NOT NULL,
-                        full_name TEXT NOT NULL, email TEXT NOT NULL, area TEXT NOT NULL,
-                        service_types TEXT NOT NULL, available_date TEXT NOT NULL,
-                        start_time TEXT NOT NULL, end_time TEXT NOT NULL,
-                        consent INTEGER NOT NULL,
-                        status TEXT NOT NULL DEFAULT 'pending',
-                        status_updated_at TEXT NOT NULL DEFAULT ''
-                    );
-                    CREATE TABLE IF NOT EXISTS status_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        record_type TEXT NOT NULL, record_id TEXT NOT NULL,
-                        old_status TEXT, new_status TEXT NOT NULL,
-                        note TEXT NOT NULL DEFAULT '', actor TEXT NOT NULL,
-                        created_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS customer_reviews (
-                        id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
-                        created_at TEXT NOT NULL,
-                        rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-                        message TEXT NOT NULL, consent INTEGER NOT NULL,
-                        status TEXT NOT NULL DEFAULT 'new',
-                        status_updated_at TEXT NOT NULL DEFAULT ''
-                    );
-                    CREATE TABLE IF NOT EXISTS service_issues (
-                        id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
-                        created_at TEXT NOT NULL, message TEXT NOT NULL,
-                        consent INTEGER NOT NULL,
-                        status TEXT NOT NULL DEFAULT 'open',
-                        status_updated_at TEXT NOT NULL DEFAULT ''
-                    );
-                    CREATE TABLE IF NOT EXISTS admins (
-                        id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE,
-                        password_hash TEXT NOT NULL,
-                        role TEXT NOT NULL DEFAULT 'admin',
-                        active INTEGER NOT NULL DEFAULT 1,
-                        created_at TEXT NOT NULL
-                    );
-                    """
-                )
-                # CREATE TABLE does not upgrade existing development databases.
-                for table_name in ("customer_requests", "cleaner_availability"):
-                    columns = {
-                        row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")
-                    }
-                    if "status" not in columns:
-                        connection.execute(
-                            f"ALTER TABLE {table_name} ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
-                        )
-                    if "status_updated_at" not in columns:
-                        connection.execute(
-                            f"ALTER TABLE {table_name} ADD COLUMN status_updated_at TEXT NOT NULL DEFAULT ''"
-                        )
-                    connection.execute(
-                        f"""
-                        UPDATE {table_name}
-                        SET status_updated_at = created_at
-                        WHERE status_updated_at = ''
-                        """
-                    )
-
-                request_columns = {
-                    row[1] for row in connection.execute("PRAGMA table_info(customer_requests)")
-                }
-                if "feedback_token_hash" not in request_columns:
-                    connection.execute(
-                        "ALTER TABLE customer_requests ADD COLUMN feedback_token_hash TEXT"
-                    )
-                connection.execute(
-                    """
-                    CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_requests_feedback_token
-                    ON customer_requests(feedback_token_hash)
-                    WHERE feedback_token_hash IS NOT NULL
-                    """
-                )
-        except sqlite3.Error as error:
-            raise StoreError("Could not open the local database.") from error
-
-    # -- helpers -----------------------------------------------------------
-
-    def _insert(self, connection, table, row):
-        columns = ", ".join(row)
-        marks = ", ".join("?" for _ in row)
-        connection.execute(
-            f"INSERT INTO {table} ({columns}) VALUES ({marks})", tuple(row.values())
-        )
-
-    @staticmethod
-    def _insert_history(connection, history):
-        connection.execute(
-            """
-            INSERT INTO status_history
-                (record_type, record_id, old_status, new_status, note, actor, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                history["record_type"], history["record_id"], history.get("old_status"),
-                history["new_status"], history.get("note", ""), history["actor"],
-                history["created_at"],
-            ),
-        )
-
-    def _add(self, table, row, history):
-        try:
-            with closing(self._connect()) as connection, connection:
-                self._insert(connection, table, row)
-                self._insert_history(connection, history)
-        except sqlite3.IntegrityError as error:
-            raise Conflict("That record already exists.") from error
-        except sqlite3.Error as error:
-            raise StoreError("Database write failed.") from error
-
-    # -- customer requests / availability ----------------------------------
-
-    def add_request(self, row, history):
-        self._add("customer_requests", row, history)
-
-    def add_availability(self, row, history):
-        self._add("cleaner_availability", row, history)
-
-    def find_request_by_token_hash(self, token_hash):
-        return self._one(
-            "SELECT * FROM customer_requests WHERE feedback_token_hash = ?", (token_hash,)
-        )
-
-    def _one(self, sql, params):
-        try:
-            with closing(self._connect()) as connection:
-                row = connection.execute(sql, params).fetchone()
-        except sqlite3.Error as error:
-            raise StoreError("Database read failed.") from error
-        return dict(row) if row else None
-
-    # -- feedback -----------------------------------------------------------
-
-    def get_review_for_request(self, request_id):
-        return self._one("SELECT * FROM customer_reviews WHERE request_id = ?", (request_id,))
-
-    def get_issue_for_request(self, request_id):
-        return self._one("SELECT * FROM service_issues WHERE request_id = ?", (request_id,))
-
-    def add_review(self, row, history):
-        self._add("customer_reviews", row, history)
-
-    def add_issue(self, row, history):
-        self._add("service_issues", row, history)
-
-    # -- admin review ---------------------------------------------------------
-
-    def get_status(self, record_type, record_id):
-        table = RECORD_TABLES[record_type]
-        row = self._one(f"SELECT status FROM {table} WHERE id = ?", (record_id,))
-        if row is None:
-            raise NotFound("That record could not be found.")
-        return row["status"]
-
-    def set_status(self, record_type, record_id, expected_status, new_status, changed_at, history):
-        table = RECORD_TABLES[record_type]
-        try:
-            with closing(self._connect()) as connection, connection:
-                updated = connection.execute(
-                    f"UPDATE {table} SET status = ?, status_updated_at = ? "
-                    "WHERE id = ? AND status = ?",
-                    (new_status, changed_at, record_id, expected_status),
-                )
-                if updated.rowcount != 1:
-                    raise Conflict("This record changed.")
-                self._insert_history(connection, history)
-        except sqlite3.Error as error:
-            raise StoreError("Database write failed.") from error
-
-    def list_records(self, record_type, status_filter, statuses):
-        table = RECORD_TABLES[record_type]
-        fields = LIST_FIELDS[record_type]
-        if record_type in ("requests", "availability"):
-            select = ", ".join(f"t.{f}" for f in fields)
-            sql = f"SELECT {select} FROM {table} AS t"
-        else:
-            select = ", ".join(f"t.{f}" for f in fields)
-            joined = ", ".join(f"c.{f}" for f in REQUEST_JOIN_FIELDS)
-            sql = (
-                f"SELECT {select}, {joined} FROM {table} AS t "
-                "JOIN customer_requests AS c ON c.id = t.request_id"
-            )
-        values = []
-        if status_filter != "all":
-            sql += " WHERE t.status = ?"
-            values.append(status_filter)
-        sql += f" ORDER BY t.created_at DESC LIMIT {LIST_LIMIT}"
-        try:
-            with closing(self._connect()) as connection:
-                records = [dict(row) for row in connection.execute(sql, values)]
-                counts = {status: 0 for status in statuses}
-                for row in connection.execute(
-                    f"SELECT status, COUNT(*) AS total FROM {table} GROUP BY status"
-                ):
-                    if row["status"] in counts:
-                        counts[row["status"]] = row["total"]
-                histories = {record["id"]: [] for record in records}
-                if histories:
-                    marks = ",".join("?" for _ in histories)
-                    for row in connection.execute(
-                        "SELECT record_id, old_status, new_status, note, actor, created_at "
-                        f"FROM status_history WHERE record_type = ? AND record_id IN ({marks}) "
-                        "ORDER BY created_at ASC, id ASC",
-                        [record_type, *histories],
-                    ):
-                        histories[row["record_id"]].append(dict(row))
-        except sqlite3.Error as error:
-            raise StoreError("Database read failed.") from error
-        return records, counts, histories
-
-    # -- admin accounts -----------------------------------------------------
-
-    def has_admins(self):
-        row = self._one("SELECT 1 AS found FROM admins WHERE active = 1 LIMIT 1", ())
-        return row is not None
-
-    def get_admin_by_email(self, email):
-        return self._one("SELECT * FROM admins WHERE email = ?", (email,))
-
-    def get_admin(self, admin_id):
-        return self._one("SELECT * FROM admins WHERE id = ?", (admin_id,))
-
-    def add_admin(self, row):
-        try:
-            with closing(self._connect()) as connection, connection:
-                self._insert(connection, "admins", row)
-        except sqlite3.IntegrityError as error:
-            raise Conflict("An admin with that email already exists.") from error
-        except sqlite3.Error as error:
-            raise StoreError("Database write failed.") from error
-
-    def list_admins(self):
-        try:
-            with closing(self._connect()) as connection:
-                rows = connection.execute(
-                    "SELECT id, email, role, active, created_at FROM admins ORDER BY created_at"
-                ).fetchall()
-        except sqlite3.Error as error:
-            raise StoreError("Database read failed.") from error
-        return [dict(row) for row in rows]
-
-    def set_admin_active(self, email, active):
-        try:
-            with closing(self._connect()) as connection, connection:
-                updated = connection.execute(
-                    "UPDATE admins SET active = ? WHERE email = ?", (1 if active else 0, email)
-                )
-                if updated.rowcount != 1:
-                    raise NotFound("No admin with that email.")
-        except sqlite3.Error as error:
-            raise StoreError("Database write failed.") from error
-
-    # -- backup ----------------------------------------------------------------
-
-    def export_all(self):
-        data = {}
-        try:
-            with closing(self._connect()) as connection:
-                for table in EXPORT_TABLES:
-                    data[table] = [dict(r) for r in connection.execute(f"SELECT * FROM {table}")]
-        except sqlite3.Error as error:
-            raise StoreError("Database read failed.") from error
-        return data
 
 
 # ---------------------------------------------------------------------------
@@ -645,6 +335,18 @@ class AppwriteStore:
             )
         self._write_history(history)
 
+    def set_assignment(self, request_id, assigned_to, history):
+        """Record who is handling a request. Does not change its status."""
+        with self._lock:
+            self._call(self.db.get_row, table_id="customer_requests", row_id=request_id)  # NotFound if gone
+            self._call(
+                self.db.update_row,
+                table_id="customer_requests",
+                row_id=request_id,
+                data={"assigned_to": assigned_to},
+            )
+        self._write_history(history)
+
     def _count(self, table, status):
         Query = self.Query
         result = self._call(
@@ -677,7 +379,7 @@ class AppwriteStore:
                     requests[request["id"]] = request
             for row in rows:
                 request = requests.get(row["request_id"])
-                if request is None:  # mirrors the inner join used by SQLite
+                if request is None:  # feedback whose request is gone is not listed
                     continue
                 record = _project(row, LIST_FIELDS[record_type])
                 record.update(_project(request, REQUEST_JOIN_FIELDS))
@@ -758,11 +460,17 @@ class AppwriteStore:
 
 # ---------------------------------------------------------------------------
 
-def open_store(environ=None, sqlite_path=None):
+def open_store(environ=None):
     environ = os.environ if environ is None else environ
-    mode = environ.get("ADENCLEAN_STORAGE", "sqlite").strip().lower()
-    if mode == "sqlite":
-        return SqliteStore(sqlite_path or Path(__file__).resolve().parent / "data" / "adenclean.sqlite3")
+    mode = environ.get("ADENCLEAN_STORAGE", "appwrite").strip().lower()
+    if mode == "memory":
+        if environ.get("RENDER"):
+            raise RuntimeError("ADENCLEAN_STORAGE=memory is for local development only; it saves nothing.")
+        from memory_tables import MemoryTablesDB
+
+        opened = AppwriteStore("", "", "", "adenclean", tables_db=MemoryTablesDB())
+        opened.name = "memory"
+        return opened
     if mode == "appwrite":
         missing = [
             name
@@ -779,5 +487,4 @@ def open_store(environ=None, sqlite_path=None):
             environ["APPWRITE_API_KEY"],
             environ.get("APPWRITE_DATABASE_ID", "adenclean"),
         )
-    raise RuntimeError("ADENCLEAN_STORAGE must be 'appwrite' or 'sqlite'.")
-
+    raise RuntimeError("ADENCLEAN_STORAGE must be 'appwrite' or 'memory'.")

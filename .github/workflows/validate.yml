@@ -29,13 +29,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check Python syntax
-        run: python -m py_compile main.py validation.py submissions.py admin_routes.py store.py auth.py create_admin.py setup_appwrite.py export_backup.py
+        run: python -m compileall -q -x "node_modules|\.git" .
 
       - name: Check JavaScript syntax
-        run: |
-          node --check static/app.js
-          node --check static/admin.js
-          node --check static/feedback.js
+        run: for file in static/*.js; do node --check "$file"; done
 
       - name: Check static pages and repository safety rules
         run: python -m unittest discover -s tests -v
@@ -61,6 +58,9 @@ jobs:
 
       - name: Type-check
         run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
 
       - name: Unit tests
         run: npm test
