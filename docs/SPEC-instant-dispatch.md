@@ -66,6 +66,7 @@ One app, role-based (cleaner sees cleaner tabs). This is new work: the tab layou
 
 - Many cleaners can accept; exactly one offer is booked when the customer chooses, even if the customer taps two offers at once (parallel test); the others close within 1 s.
 - A cleaner without a price for the service, or not offering it, is never asked.
+- A rate below the minimum or above the maximum is refused on save and on offer (tests at min-1, min, max, max+1); a rate that falls outside after the limits change is skipped, and the cleaner is asked to update it.
 - Each eligibility rule has a test where it alone excludes the cleaner, at dispatch and at claim.
 - Timeout, all-declined and zero-eligible each produce one board job and one customer notification; zero-eligible falls back immediately.
 - Accept after expiry, after customer cancel, or after fallback is refused.
@@ -79,7 +80,7 @@ One app, role-based (cleaner sees cleaner tabs). This is new work: the tab layou
 ## Open questions for the owner
 
 1. ~~Customer chooses or auto-book~~ Decided: the customer chooses.
-2. **Price limits:** may a cleaner set any price? Without a floor or ceiling a cleaner can price at $1 or $1,000. Suggest a configurable min and max per service.
+2. ~~Price limits~~ Decided: yes. Each service has a minimum and maximum flat price (config `SERVICE_PRICE_LIMITS`, cents). The server refuses a rate outside them when the cleaner saves it, and again when an offer is made, so changing the limits never lets an old out-of-range rate be offered. **The dollar amounts are the owner's to set before launch; none are assumed here.** Original note: may a cleaner set any price? Without a floor or ceiling a cleaner can price at $1 or $1,000. Suggest a configurable min and max per service.
 3. **"Capable":** offering the service in their profile, or something verified (a skills check, years, equipment)? Default here: profile only, plus vetting.
 
 ## Risks (first)
