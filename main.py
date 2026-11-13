@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import observability
+import push
 import store as storage
 from admin_routes import AdminRoutes
 from api_v1 import MarketplaceRoutes
@@ -351,6 +352,9 @@ class AdenCleanHandler(MarketplaceRoutes, SubmissionRoutes, AdminRoutes, SimpleH
                 if payload.get("action") == "lookup":
                     # Checking status only reads, and the app checks every saved request.
                     self.enforce_rate_limit(bucket="lookup", limit=LOOKUP_RATE_LIMIT_MAX_REQUESTS)
+                elif payload.get("action") in push.ACTIONS:
+                    # Turning notifications on or off for up to 60 saved requests in a row.
+                    self.enforce_rate_limit(bucket="push", limit=LOOKUP_RATE_LIMIT_MAX_REQUESTS)
                 else:
                     self.enforce_rate_limit()
                 status, result = self.handle_customer_feedback(payload)
