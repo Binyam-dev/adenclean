@@ -27,19 +27,27 @@ At least 12 testers opted in, continuously, for 14 days, in a **closed** test (n
 
 ## Reddit recruitment post (draft, do not post without the owner's yes)
 
-Where: communities for closed-test swaps, for example r/AndroidClosedTesting. [Guessing: it exists and is the usual place; confirm it, read its rules and flair requirements before posting.]
+Where: r/AndroidClosedTesting. [Certain: it exists and is active as of 2026-11-13; its posts are test-for-test swaps.] I could not read its sidebar rules, so open the subreddit and check them and any flair requirement before posting. [Likely] posts there put the Google Group and opt-in links in the post itself and say "I test back"; the draft follows that style.
 
-**Title:** Looking for 20 Android testers for a small home-cleaning request app (14-day Play closed test, happy to test yours back)
+**Title:** [T4T] Need 20 testers for AdenClean (home-cleaning request app), 14-day closed test. I test yours back!
 
-**Body:**
+**Body** (replace the two PASTE lines once the closed track exists; do not post before then):
 
-> I'm a solo developer launching AdenClean, a simple app for requesting a home cleaning in Silver Spring, MD. Google requires 12+ testers opted in for 14 days before I can publish.
+> Hi! I'm a solo developer launching AdenClean, a simple app for requesting a home cleaning in Silver Spring, MD. Google needs 12+ testers opted in for 14 days before I can publish.
 >
-> What I need: an Android phone (Android 7 or newer), a Google account, and about 5 minutes to try it, then staying opted in for 14 days. No sign-up in the app, no payment, no personal info needed: use made-up details.
+> **How to join (about 5 minutes):**
+> 1. Join the Google Group: **PASTE GROUP LINK**
+> 2. Become a tester: **PASTE OPT-IN LINK**
+> 3. Install AdenClean from Google Play, tap "Request a cleaning" and send a request with made-up details (no real address or phone).
+> 4. Please stay opted in for 14 days (until **FILL IN DATE**).
 >
-> What you get: my honest feedback on your app too. Comment or message me your Play account email and the app you'd like tested, and I'll add you and test yours in return.
+> **What you need:** an Android phone (Android 7 or newer: verify the app's minimum before posting) and a Google account. No sign-up in the app, no payment, nothing is sent to you.
 >
-> Opt-in link and steps will be sent once you comment. Thank you!
+> **I test back:** comment with your app's link (or DM me) and I'll install it, keep it for 14 days and leave honest feedback. Thank you!
+
+Optional: attach one screenshot, or the promo video's first frame, as the post image (many swap posts do).
+
+Both links are the same for every tester, so nobody needs to send me an email address; the Google Group handles the tester list. Reply to each commenter with the tester instructions above and keep any private details out of the public thread.
 
 Reply to each commenter with the tester instructions above, ask for their Play email by private message (never in public comments), and add it to the tester list.
 
