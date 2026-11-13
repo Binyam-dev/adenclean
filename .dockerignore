@@ -1,0 +1,12 @@
+.git
+.github
+.claude-flow
+.hallmark
+mobile
+tests
+docs
+scripts
+__pycache__
+*.pyc
+.env
+*.db
