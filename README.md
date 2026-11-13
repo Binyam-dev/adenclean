@@ -43,6 +43,10 @@ python create_admin.py disable someone@example.com   # ends their access immedia
 python create_admin.py enable someone@example.com
 ```
 
+## Releasing
+
+How to build, submit to Apple and Google, ship an update, and where each store release stands: [`RELEASE.md`](RELEASE.md). Recruiting testers for Google's 14-day closed test: [`docs/PLAY_TESTING.md`](docs/PLAY_TESTING.md).
+
 ## Operations
 
 Deploying, rolling back, backups, restoring Appwrite and what to do when something breaks are in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).

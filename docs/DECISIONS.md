@@ -6,6 +6,7 @@ One line per non-obvious choice and why. Marketplace decisions follow below.
 
 | Decision | Why |
 | --- | --- |
+| Push notifications for request status ship as version 1.0.1 during the Google closed test, not in the first iOS submission (2026-11-13). | They add a device token as a new data type (both privacy forms), a server sender and an Apple push key: about 3 to 5 days that would delay iOS. Apple 4.2 risk looks low without them: the app is native (tabs, secure storage). They double as the real update Google expects during the closed test. Revisit if Apple rejects under 4.2. |
 | The store MVP is version 1 only: request, check by private link, review or report an issue. The marketplace stays in the code behind `MARKETPLACE_ENABLED` and `EXPO_PUBLIC_MARKETPLACE`, both off. | The brief's v1 scope excludes sign-in. The marketplace needs legal sign-off (worker classification, background-check disclosure), live Stripe and Checkr accounts, and insurance, none of which exist. |
 | Removed the SQLite backend entirely. Local runs use `ADENCLEAN_STORAGE=memory`, which holds the same Appwrite tables in memory and is refused on Render. | The brief says no SQLite. Keeping one code path (the Appwrite one) means tests exercise what production runs. A typo in the env var can no longer send customer data to a local file. |
 | `ADENCLEAN_STORAGE` now defaults to `appwrite`, and the server refuses to start without the Appwrite settings. | Failing loudly beats starting with an empty, unsaved store. |
