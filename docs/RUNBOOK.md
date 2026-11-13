@@ -41,6 +41,20 @@ Every setting is listed in `.env.example`. Set them in Render: Service > Environ
 3. Check it: `curl https://adenclean.onrender.com/health?deep=1`, then open the site and the admin page.
 4. If the change added a field to the data model, run `python setup_appwrite.py` once, **before** merging, with a temporary key that has database, table, column and index scopes. It only adds what is missing and is safe to repeat. Delete the temporary key afterwards.
 
+## Self-hosting on CapRover (prepared, not in use)
+
+The repository has a `Dockerfile` and `captain-definition` for CapRover. Production still runs on Render. **The image has not been built or run in Docker yet** (Docker Desktop was not running when it was written); the app itself was checked locally on port 8080. Build and smoke-test it on the new server before any cutover.
+
+Owner steps (you pay for the server; paste secrets only into CapRover, never into chat or Git):
+1. A Linux VPS with at least 1 GB RAM and a public IP. Open ports 80, 443 and 3000.
+2. A domain you control. Point `*.apps.yourdomain.com` (wildcard A record) at the server, for example `api.yourdomain.com` for AdenClean.
+3. Install CapRover (`docker run ... caprover/caprover`, then `caprover serversetup`), per caprover.com/docs/get-started.
+4. In CapRover create the app, then: HTTP Settings > container HTTP port **8080**, enable HTTPS and Force HTTPS. App Configs > environment: `ADENCLEAN_STORAGE=appwrite`, `ADENCLEAN_PROXY_HOPS=1`, `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`, `APPWRITE_API_KEY` (rows scopes only), `SESSION_SECRET` (32+ random characters; a new one signs admins out). Same names as the Settings table above.
+5. Deploy: `caprover deploy` from the repository, or connect the GitHub repository to the app. Persistent data lives in Appwrite, so the container needs no volume.
+6. Check `https://api.yourdomain.com/health?deep=1`, then run `python scripts/smoke_test.py https://api.yourdomain.com`.
+
+**Cutover constraint:** the shipped apps (iOS build 8, Android build 3) have `https://adenclean.onrender.com` built in, and the store privacy-policy links point there. Moving the server does not move those apps. Keep Render running until the apps are rebuilt with the new address (a new EAS build with `EXPO_PUBLIC_API_URL` changed in `mobile/eas.json`, the listing links updated, and old versions retired), or make the Render service forward to the new host. Plan the move with a release such as 1.0.1, not before the first store submission. You also lose Render's automatic deploy, rollback and health-based restart; set up CapRover's own deploy trigger, an uptime monitor, and backups.
+
 ## Roll back
 
 Render: Service > Events, find the last good deploy, choose **Rollback**. Takes about two minutes. If the bad change also altered data (rare), see "Restore data" below.
