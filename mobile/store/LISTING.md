@@ -58,6 +58,10 @@ advertising.
 | Location > Coarse location (the town or ZIP code they type) | Yes | Yes | App functionality |
 | User Content > Other user content (request notes, reviews) | Yes | Yes | App functionality |
 | User Content > Customer support (service issue reports) | Yes | Yes | App functionality |
+| Identifiers > Device ID (notification token; **version 1.0.1 and later only**, and only if the person turns notifications on) | Yes | Yes | App functionality |
+
+**Do not add the Device ID row to the label for version 1.0.0 (iOS build 8).** Add it when
+1.0.1 ships. `app.json` already carries it for 1.0.1.
 
 Apple's pages do not say whether a typed town or ZIP counts as location, so it is declared
 as Coarse location to be safe. The same answers are written into `ios.privacyManifests` in
@@ -118,7 +122,8 @@ requests from their phone at any time.
 | --- | --- |
 | Does the app collect or share user data? | Collects: yes. Shares with other companies: no. |
 | Data types collected | Name, email address, approximate location (the town or ZIP code typed in; Google's pages do not say whether typed input counts, so it is declared to be safe), other user-generated content (notes, reviews, reports) |
-| Is collection required or optional | Required to send a request; notes are optional |
+| Version 1.0.1 and later: add "Device or other IDs" | The notification token (Expo push token). Optional (only if the person turns notifications on), app functionality, not shared except with the notification services (Expo, Apple, Google) that deliver the message as service providers. Not needed in the form for 1.0.0. |
+| Is collection required or optional | Required to send a request; notes and notifications are optional |
 | Why it is collected | App functionality |
 | Is data encrypted in transit | Yes (HTTPS) |
 | Can people ask for their data to be deleted | Yes: by email from the app (More > Ask AdenClean to delete my information) and as described in the privacy policy |

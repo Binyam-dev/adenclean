@@ -11,11 +11,13 @@ import { useEffect } from 'react';
 
 import { usePalette } from '@/components/use-palette';
 import { MARKET_ENABLED } from '@/lib/market';
+import { usePushSetup } from '@/lib/push';
 
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const p = usePalette();
+  usePushSetup();
   const [loaded, error] = useFonts({
     BricolageGrotesque_700Bold,
     BricolageGrotesque_800ExtraBold,

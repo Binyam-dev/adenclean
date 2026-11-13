@@ -45,3 +45,6 @@ example
 # Raw screenshots used to build the store images
 store/raw/
 store/.page.html
+
+# Firebase credential for Android notifications: never commit
+google-services.json

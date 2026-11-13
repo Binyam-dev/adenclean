@@ -11,6 +11,7 @@ from http.cookies import CookieError, SimpleCookie
 from urllib.parse import parse_qs, urlsplit
 
 import auth
+import push
 from store import Conflict, NotFound
 from validation import RECORD_STATUSES, RECORD_TYPES, STATUS_TRANSITIONS, ApiError, clean_text
 
@@ -254,6 +255,9 @@ class AdminRoutes:
             raise ApiError(404, "That record could not be found.") from error
         except Conflict as error:
             raise ApiError(409, "This record changed. Refresh the list and try again.") from error
+
+        if record_type == "requests":
+            push.notify_status_change(self.store, record_id, new_status)  # queued; never waits or fails
 
         self.send_json(
             200,

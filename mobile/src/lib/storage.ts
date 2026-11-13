@@ -54,6 +54,9 @@ async function remove(key: string): Promise<void> {
   }
 }
 
+/** Small named settings (notification choices) kept beside the saved requests. */
+export const flags = { get: read, set: write, remove };
+
 async function readIndex(): Promise<string[]> {
   const raw = await read(INDEX_KEY);
   if (!raw) return [];

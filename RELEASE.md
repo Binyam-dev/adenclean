@@ -41,7 +41,15 @@ Google looks for evidence of real testing, so ship at least one genuine update w
 
 | Date | Version / build | What changed and why |
 | --- | --- | --- |
-| | | |
+| | 1.0.1 (code on branch `push-1-0-1`, not built) | Request-status notifications on iOS and Android. |
+
+**Before building 1.0.1** (owner steps, none done yet; start only after iOS build 8 is submitted so the push entitlement never enters it):
+
+1. Android: create a Firebase project, add the Android app `com.adencommunity.clean`, download `google-services.json`, and upload it to EAS as the file variable `GOOGLE_SERVICES_JSON` (never commit it). Upload the FCM v1 service-account key with `eas credentials` (Android > Google Service Account > FCM V1).
+2. iOS: the next `eas build --platform ios` is interactive once, so EAS can enable Push Notifications for the app id and create the Apple push key (you sign in with your Apple ID).
+3. Server: run `setup_appwrite.py` (adds the `push_tokens` column), deploy this branch, then set `PUSH_ENABLED=1` in Render.
+4. Store forms: add the Device ID answers from `mobile/store/LISTING.md` and update the Apple label before submitting 1.0.1.
+5. Test on a real phone with a build from this branch: send a request, turn notifications on, change its status in the admin page, expect "Update on your request". Unverified until then.
 
 ### Tester feedback and fixes
 

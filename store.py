@@ -67,6 +67,8 @@ APPWRITE_SCHEMA = {
             ("feedback_token_hash", VARCHAR, 64, True),
             # Who at AdenClean (or which cleaner) is handling this request. Free text, set by an admin.
             ("assigned_to", VARCHAR, 100, False),
+            # Expo push tokens for status notifications, comma separated (see push.py). Private.
+            ("push_tokens", VARCHAR, 255, False),
         ],
         "indexes": [
             ("uniq_feedback_token", "unique", ["feedback_token_hash"]),
@@ -160,6 +162,8 @@ EXPORT_TABLES = (
     "customer_requests", "cleaner_availability", "status_history",
     "customer_reviews", "service_issues",
 )
+# Columns that must never appear in a backup file (a test checks new token-like columns).
+PRIVATE_COLUMNS = {"customer_requests": ("push_tokens",)}
 
 
 class StoreError(Exception):
@@ -455,7 +459,12 @@ class AppwriteStore:
     # -- backup ----------------------------------------------------------------
 
     def export_all(self):
-        return {table: self._list(table, []) for table in EXPORT_TABLES}
+        data = {table: self._list(table, []) for table in EXPORT_TABLES}
+        for table, columns in PRIVATE_COLUMNS.items():
+            for row in data[table]:
+                for column in columns:
+                    row.pop(column, None)
+        return data
 
 
 # ---------------------------------------------------------------------------

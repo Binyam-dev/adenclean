@@ -7,6 +7,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
+import push
 from store import Conflict
 from validation import (
     PREFERRED_TIMES, ApiError, clean_consent, clean_date, clean_email, clean_service_type,
@@ -69,7 +70,7 @@ class SubmissionRoutes:
 
     def handle_customer_feedback(self, payload):
         action = clean_text(payload.get("action"), "Feedback action", 20).lower()
-        if action not in {"lookup", "review", "issue"}:
+        if action not in {"lookup", "review", "issue"} | push.ACTIONS:
             raise ApiError(400, "Choose a valid feedback action.")
 
         token = payload.get("token")
@@ -80,6 +81,8 @@ class SubmissionRoutes:
         request = self.store.find_request_by_token_hash(token_hash)
         if request is None:
             raise ApiError(404, "That private feedback link is invalid.")
+        if action in push.ACTIONS:  # after the private code is proven, so a bad code is always a 404
+            return push.handle_action(self.store, request, action, payload)
 
         review_exists = self.store.get_review_for_request(request["id"]) is not None
         issue = self.store.get_issue_for_request(request["id"])

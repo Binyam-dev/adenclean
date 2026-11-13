@@ -137,6 +137,15 @@ export async function sendIssue(token: string, message: string, fetcher?: typeof
   );
 }
 
+/** Adds or removes this phone's notification token for one request. Safe to repeat. */
+export async function pushRegister(token: string, pushToken: string, fetcher?: typeof fetch) {
+  await post('/api/customer-feedback', { action: 'push_register', token, pushToken }, fetcher, true);
+}
+
+export async function pushUnregister(token: string, pushToken: string, fetcher?: typeof fetch) {
+  await post('/api/customer-feedback', { action: 'push_unregister', token, pushToken }, fetcher, true);
+}
+
 /** Shared status answers for the app's screens, so moving between them doesn't re-check every request. */
 export const statusCache = new LookupCache((token) => lookup(token));
 
