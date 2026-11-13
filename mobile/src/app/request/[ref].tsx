@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { Notice, Rule, StatusPill } from '@/components/Bits';
@@ -13,6 +13,7 @@ import { usePalette } from '@/components/use-palette';
 import { ApiError, isGone, sendIssue, sendReview, statusCache, type Lookup } from '@/lib/api';
 import { SUPPORT_EMAIL, SUPPORT_PHONE_DISPLAY, SUPPORT_PHONE_LINK } from '@/lib/config';
 import { confirmAction } from '@/lib/confirm';
+import { registerSaved, unregisterSaved, usePush } from '@/lib/push';
 import { issueCopy, statusCopy } from '@/lib/status';
 import { getSaved, removeRequest, type SavedRequest } from '@/lib/storage';
 import { radius, space } from '@/lib/theme';
@@ -40,6 +41,14 @@ export default function RequestDetail() {
   const [issue, setIssue] = useState('');
   const [issueError, setIssueError] = useState<string | null>(null);
   const [issueBusy, setIssueBusy] = useState(false);
+
+  const push = usePush();
+  const savedToken = saved?.token;
+  const justAdded = sent === '1' || saved?.imported === true;
+  // A request that was just sent or added from a link joins notifications if they are already on.
+  useEffect(() => {
+    if (savedToken && justAdded) void registerSaved({ token: savedToken });
+  }, [savedToken, justAdded]);
 
   const load = useCallback(async (force = false) => {
     const item = await getSaved(reference);
@@ -129,6 +138,7 @@ export default function RequestDetail() {
       destructive: true,
     });
     if (!yes) return;
+    if (saved) await unregisterSaved(saved); // best effort; the server also clears it when the request ends
     await removeRequest(reference);
     router.dismissTo('/requests');
   };
@@ -169,6 +179,18 @@ export default function RequestDetail() {
           AdenClean has it. This isn&apos;t a confirmed booking, and you can check its status here at any time.
         </Notice>
       ) : null}
+
+      {justAdded && push.offer ? (
+        <View style={[styles.card, { backgroundColor: p.surface, borderColor: p.line }]}>
+          <Text variant="heading">Get a notification when this changes?</Text>
+          <Text variant="small" tone="soft">
+            AdenClean sends a short alert when it updates this request. The alert never includes your name or details, and you can turn it off under More.
+          </Text>
+          <Button label="Turn on notifications" onPress={() => void push.turnOn()} loading={push.busy} />
+          <Button label="Not now" variant="quiet" onPress={() => void push.notNow()} disabled={push.busy} />
+        </View>
+      ) : null}
+      {justAdded && push.notice ? <Notice kind="info">{push.notice}</Notice> : null}
 
       {state === 'loading' ? <Text variant="body" tone="soft">Checking status…</Text> : null}
 

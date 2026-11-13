@@ -19,8 +19,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     throw new Error('EXPO_PUBLIC_API_URL points at localhost. Use the deployed server address.');
   }
 
+  // Android notifications need Firebase's google-services.json (an owner credential, never committed).
+  // Supply it as the EAS file variable GOOGLE_SERVICES_JSON. Without it the build still works
+  // and notifications simply don't arrive on Android.
+  const services = process.env.GOOGLE_SERVICES_JSON ?? '';
+  const base = services ? { ...config, android: { ...config.android, googleServicesFile: services } } : config;
+
   if (process.env.EXPO_PUBLIC_MARKETPLACE === '1') {
-    return { ...config, plugins: [...(config.plugins ?? []), ['@stripe/stripe-react-native', { enableGooglePay: false }]] } as ExpoConfig;
+    return { ...base, plugins: [...(base.plugins ?? []), ['@stripe/stripe-react-native', { enableGooglePay: false }]] } as ExpoConfig;
   }
-  return config as ExpoConfig;
+  return base as ExpoConfig;
 };

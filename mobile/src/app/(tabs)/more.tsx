@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 
 import { ApiError } from '@/lib/api';
 import { MARKET_ENABLED } from '@/lib/market';
+import { unregisterAllSaved, usePush } from '@/lib/push';
 import { signOut, useSession } from '@/lib/session';
 import { clearAll } from '@/lib/storage';
 import { radius, space } from '@/lib/theme';
@@ -42,6 +43,7 @@ export default function More() {
   const [accountError, setAccountError] = useState<string | null>(null);
   const { user, client } = useSession();
   const version = Constants.expoConfig?.version ?? '1.0.0';
+  const push = usePush();
 
   const deleteAccount = async () => {
     const yes = await confirmAction({
@@ -71,6 +73,7 @@ export default function More() {
       destructive: true,
     });
     if (!yes) return;
+    await unregisterAllSaved();
     await clearAll();
     setDone(true);
   };
@@ -107,6 +110,25 @@ export default function More() {
             <Row title="Sign in or create an account" detail="Hire cleaners or find cleaning work" onPress={() => router.push('/sign-in')} />
           )}
           {accountError ? <Notice kind="error">{accountError}</Notice> : null}
+        </View>
+      ) : null}
+
+      {push.state === 'off' || push.state === 'on' || push.state === 'blocked' ? (
+        <View style={[styles.group, { backgroundColor: p.surface, borderColor: p.line }]}>
+          <Text variant="heading">Notifications</Text>
+          <Text variant="small" tone="soft">
+            A short alert when AdenClean updates a request. It never includes your name or details.
+          </Text>
+          {push.state === 'on' ? (
+            <Row title="Turn off notifications" detail="Stops alerts for every request on this phone" onPress={() => void push.turnOff()} />
+          ) : (
+            <Row
+              title="Turn on notifications"
+              detail={push.state === 'blocked' ? 'Blocked in phone settings. Allow AdenClean there, then try again.' : 'Alerts for the requests saved on this phone'}
+              onPress={() => void push.turnOn()}
+            />
+          )}
+          {push.notice ? <Notice kind="info">{push.notice}</Notice> : null}
         </View>
       ) : null}
 

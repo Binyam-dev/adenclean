@@ -31,6 +31,8 @@ Every setting is listed in `.env.example`. Set them in Render: Service > Environ
 | `SESSION_SECRET` | yes | Render generates it. Changing it signs every admin out. |
 | `ADENCLEAN_PROXY_HOPS` | yes | `1` on Render. |
 | `SENTRY_DSN` | no | Turns on error reporting. |
+| `PUSH_ENABLED` | no | `1` turns on request-status notifications (app 1.0.1). **Run `setup_appwrite.py` first** so the `push_tokens` column exists, or registering a phone fails. Tokens sit in that column; anyone with Appwrite console access can read them, and they are removed from backups. Leave it unset to turn notifications off at once. |
+| `EXPO_ACCESS_TOKEN`, `PUSH_CA_BUNDLE` | no | Only if Expo "enhanced security" is on, or the network inspects HTTPS. |
 
 ## Deploy
 
